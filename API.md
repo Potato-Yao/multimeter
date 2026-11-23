@@ -18,13 +18,13 @@ default is configured in `.cargo/config.toml`:
 
 ```toml
 [env]
-MULTIMETER_BASE_URL = "http://localhost:5173/test/"
+MULTIMETER_BASE_URL = "https://clinic.bitnp.net/test"
 ```
 
 Override it for a build with a process environment variable:
 
 ```sh
-MULTIMETER_BASE_URL=https://clinic.bitnp.net/test/ cargo build --release
+MULTIMETER_BASE_URL=https://clinic.bitnp.net/test cargo build --release
 ```
 
 `build.rs` validates that the value is non-empty, contains no whitespace, and
