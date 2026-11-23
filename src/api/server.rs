@@ -8,7 +8,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
 use futures_util::stream::SplitSink;
-use rand::RngCore;
+use rand::Rng;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
