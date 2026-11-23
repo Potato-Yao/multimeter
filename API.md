@@ -9,12 +9,33 @@ and uses a random token generated for each launch.
 The current implementation supplies the API and provider interface. Browser
 launching and the `sysinfo`/`nvml_wrapper` collectors are separate stages.
 
+## Build-time configuration
+
+The frontend base URL is selected when the executable is built. The project
+default is configured in `.cargo/config.toml`:
+
+```toml
+[env]
+MULTIMETER_BASE_URL = "http://localhost:5173/test/"
+```
+
+Override it for a build with a process environment variable:
+
+```sh
+MULTIMETER_BASE_URL=https://clinic.bitnp.net/test/ cargo build --release
+```
+
+`build.rs` validates that the value is non-empty, contains no whitespace, and
+uses `http://` or `https://`. The value is embedded at compile time and exposed
+as `multimeter::config::FRONTEND_BASE_URL`. It is not read from the end-user's
+environment at runtime.
+
 ## Bootstrap
 
 The page receives a URL-safe, base64-encoded JSON payload in the URL fragment:
 
 ```text
-<frontend-url>#multimeter=<base64url({
+<MULTIMETER_BASE_URL>#multimeter=<base64url({
   "v": 1,
   "ws": "ws://127.0.0.1:49123/v1/ws",
   "token": "<random token>"

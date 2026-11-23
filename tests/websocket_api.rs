@@ -98,6 +98,12 @@ async fn next_json(socket: &mut Client) -> Value {
 #[tokio::test]
 async fn supports_query_seeking_pause_and_shutdown() {
     let (bootstrap, server_task) = spawn_server().await;
+    let launch_url = bootstrap
+        .configured_launch_url()
+        .expect("configured launch URL should serialize");
+    assert!(launch_url.starts_with(multimeter::config::FRONTEND_BASE_URL));
+    assert!(launch_url.contains("#multimeter="));
+
     let mut socket = connect(&bootstrap).await;
 
     let ready = next_json(&mut socket).await;
