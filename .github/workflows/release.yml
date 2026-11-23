@@ -18,12 +18,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Linux x86_64
+          - name: Linux x86_64 GNU
             os: ubuntu-22.04
-            artifact: multimeter-linux-x86_64
+            target: x86_64-unknown-linux-gnu
+          - name: Linux x86_64 musl
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
           - name: Windows x86_64
             os: windows-latest
-            artifact: multimeter-windows-x86_64
+            target: x86_64-pc-windows-msvc
+          - name: Windows ARM64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -35,32 +41,45 @@ jobs:
           rustc --version
           cargo --version
 
+      - name: Install musl toolchain
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+
+      - name: Install Rust target
+        run: rustup target add "${{ matrix.target }}"
+
       - name: Run tests
-        run: cargo test --locked --all-targets
+        run: cargo test --locked --all-targets --target "${{ matrix.target }}"
 
       - name: Build release executable
-        run: cargo build --locked --release
+        run: cargo build --locked --release --target "${{ matrix.target }}"
 
       - name: Package Linux executable
         if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           mkdir -p dist
-          tar -czf "dist/multimeter-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu.tar.gz" \
-            -C target/release multimeter
+          tar -czf "dist/multimeter-${GITHUB_REF_NAME}-${TARGET}.tar.gz" \
+            -C "target/${TARGET}/release" multimeter
 
       - name: Package Windows executable
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive `
-            -Path target/release/multimeter.exe `
-            -DestinationPath "dist/multimeter-$env:GITHUB_REF_NAME-x86_64-pc-windows-msvc.zip"
+            -Path "target/$env:TARGET/release/multimeter.exe" `
+            -DestinationPath "dist/multimeter-$env:GITHUB_REF_NAME-$env:TARGET.zip"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: multimeter-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
