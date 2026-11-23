@@ -11,6 +11,23 @@ frontend with a launch token, and serves fresh snapshots on demand. There is no
 background update service; seeking drives repeated snapshot requests from the
 session loop.
 
+## Elevated startup
+
+Multimeter only runs with administrator permissions. At startup it checks the
+effective user before probing providers, opening a port, or launching the
+frontend.
+
+- On Linux and macOS, a non-root instance asks `sudo` to authenticate and then
+  launches the same executable with `sudo`. The original instance exits only
+  after the elevated launch succeeds.
+- On Windows, a non-elevated process requests elevation through the Windows
+  `runas` operation and therefore displays the normal administrator/UAC prompt.
+  The original instance exits only after Windows accepts the request.
+
+Cancelled authentication, denied elevation, unavailable elevation tools, and
+other launch failures stop multimeter with an error. The process never falls
+back to collecting and serving information with normal user permissions.
+
 ## Build-time configuration
 
 The frontend base URL is selected when the executable is built. The project
