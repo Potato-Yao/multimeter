@@ -31,6 +31,8 @@ use tokio_tungstenite::tungstenite::handshake::server::ErrorResponse;
 use tokio_tungstenite::tungstenite::handshake::server::Request;
 use tokio_tungstenite::tungstenite::handshake::server::Response;
 
+use crate::config::FRONTEND_BASE_URL;
+
 use super::protocol::{
     ApiErrorPayload, ClientMessage, InfoQueryParams, InfoSection, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
     PROTOCOL_VERSION, SeekingConfig, SeekingLimits, SeekingResult, SeekingStartParams,
@@ -104,6 +106,10 @@ impl ApiBootstrap {
             .split_once('#')
             .map_or(frontend_url, |(base, _)| base);
         Ok(format!("{base_url}#multimeter={}", self.fragment()?))
+    }
+
+    pub fn configured_launch_url(&self) -> Result<String, ApiError> {
+        self.launch_url(FRONTEND_BASE_URL)
     }
 }
 
