@@ -6,8 +6,10 @@ The executable exposes one local WebSocket session for both control commands and
 periodic hardware updates. The server binds to `127.0.0.1` on an ephemeral port
 and uses a random token generated for each launch.
 
-The current implementation supplies the API and provider interface. Browser
-launching and the `sysinfo`/`nvml_wrapper` collectors are separate stages.
+The executable probes `sysinfo` and NVML at startup, opens the configured
+frontend with a launch token, and serves fresh snapshots on demand. There is no
+background update service; seeking drives repeated snapshot requests from the
+session loop.
 
 ## Build-time configuration
 

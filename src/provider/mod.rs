@@ -69,11 +69,12 @@ mod tests {
 
     #[test]
     fn probes_and_collects_requested_system_data() {
-        let source = MultimeterInfoSource::probe();
+        let source = MultimeterInfoSource::probe().into_shared();
         let capabilities = source.capabilities();
         assert!(capabilities.sysinfo.available);
+        let query_service = crate::api::QueryService::new(source);
 
-        let snapshot = source
+        let snapshot = query_service
             .snapshot(&[InfoSection::Platform, InfoSection::Cpu, InfoSection::Memory])
             .expect("system snapshot should succeed");
 
