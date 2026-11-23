@@ -32,14 +32,14 @@ use tokio_tungstenite::tungstenite::handshake::server::Request;
 use tokio_tungstenite::tungstenite::handshake::server::Response;
 
 use crate::config::FRONTEND_BASE_URL;
+use crate::model::{HardwareSnapshot, InfoSection, normalize_sections};
 
 use super::protocol::{
-    ApiErrorPayload, ClientMessage, InfoQueryParams, InfoSection, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
+    ApiErrorPayload, ClientMessage, InfoQueryParams, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
     PROTOCOL_VERSION, SeekingConfig, SeekingLimits, SeekingResult, SeekingStartParams,
     SeekingStateData, ServerMessage, SessionClosedData, SessionReadyData, SessionState,
-    normalize_sections,
 };
-use super::source::{HardwareSnapshot, InfoSource};
+use super::source::InfoSource;
 
 const DEFAULT_AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_INBOUND_MESSAGE_BYTES: usize = 16 * 1024;

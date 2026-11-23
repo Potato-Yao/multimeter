@@ -35,6 +35,7 @@ impl InfoSource for FakeInfoSource {
                 logical_cores: 8,
                 usage_percent: 25.0,
                 frequency_mhz: 3_200,
+                ..CpuInfo::default()
             }),
             memory: sections
                 .contains(&InfoSection::Memory)
@@ -42,6 +43,7 @@ impl InfoSource for FakeInfoSource {
                     total_bytes: 16 * 1024 * 1024 * 1024,
                     used_bytes: 4 * 1024 * 1024 * 1024,
                     available_bytes: 12 * 1024 * 1024 * 1024,
+                    ..MemoryInfo::default()
                 }),
             ..HardwareSnapshot::default()
         })

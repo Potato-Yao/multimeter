@@ -1,46 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::model::InfoSection;
+
 pub const PROTOCOL_VERSION: u8 = 1;
 pub const DEFAULT_INTERVAL_MS: u64 = 1_000;
 pub const MIN_INTERVAL_MS: u64 = 250;
 pub const MAX_INTERVAL_MS: u64 = 60_000;
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum InfoSection {
-    Platform,
-    Cpu,
-    Memory,
-    Swap,
-    Disks,
-    Networks,
-    Gpus,
-    Components,
-}
-
-impl InfoSection {
-    pub const ALL: [Self; 8] = [
-        Self::Platform,
-        Self::Cpu,
-        Self::Memory,
-        Self::Swap,
-        Self::Disks,
-        Self::Networks,
-        Self::Gpus,
-        Self::Components,
-    ];
-}
-
-pub fn normalize_sections(sections: Vec<InfoSection>) -> Vec<InfoSection> {
-    let mut normalized = Vec::with_capacity(sections.len());
-    for section in sections {
-        if !normalized.contains(&section) {
-            normalized.push(section);
-        }
-    }
-    normalized
-}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ClientMessage {
