@@ -12,6 +12,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    println!("multimeter version {}", env!("CARGO_PKG_VERSION"));
+
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
