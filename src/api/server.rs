@@ -39,6 +39,7 @@ use super::protocol::{
     PROTOCOL_VERSION, SeekingConfig, SeekingLimits, SeekingResult, SeekingStartParams,
     SeekingStateData, ServerMessage, SessionClosedData, SessionReadyData, SessionState,
 };
+use super::query::QueryService;
 use super::source::InfoSource;
 
 const DEFAULT_AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(2);
@@ -175,7 +176,7 @@ impl Default for Session {
 
 pub struct ApiServer {
     listener: TcpListener,
-    source: Arc<dyn InfoSource>,
+    query_service: Arc<QueryService>,
     options: ApiOptions,
     token: String,
 }
@@ -183,6 +184,13 @@ pub struct ApiServer {
 impl ApiServer {
     pub async fn bind(
         source: Arc<dyn InfoSource>,
+        options: ApiOptions,
+    ) -> Result<(Self, ApiBootstrap), ApiError> {
+        Self::bind_with_query_service(Arc::new(QueryService::new(source)), options).await
+    }
+
+    pub async fn bind_with_query_service(
+        query_service: Arc<QueryService>,
         options: ApiOptions,
     ) -> Result<(Self, ApiBootstrap), ApiError> {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
@@ -200,7 +208,7 @@ impl ApiServer {
         Ok((
             Self {
                 listener,
-                source,
+                query_service,
                 options,
                 token,
             },
@@ -209,7 +217,7 @@ impl ApiServer {
     }
 
     pub async fn run(self) -> Result<(), ApiError> {
-        let source = self.source;
+        let query_service = self.query_service;
         let options = Arc::new(self.options);
         let token = Arc::new(self.token);
         let session = Arc::new(Mutex::new(Session::default()));
@@ -223,7 +231,7 @@ impl ApiServer {
                     let (stream, _) = accepted?;
                     tasks.spawn(serve_connection(
                         stream,
-                        Arc::clone(&source),
+                        Arc::clone(&query_service),
                         Arc::clone(&options),
                         Arc::clone(&token),
                         Arc::clone(&session),
@@ -258,7 +266,7 @@ type ClientSink = SplitSink<WebSocketStream<TcpStream>, Message>;
 #[allow(clippy::result_large_err)]
 async fn serve_connection(
     stream: TcpStream,
-    source: Arc<dyn InfoSource>,
+    query_service: Arc<QueryService>,
     options: Arc<ApiOptions>,
     token: Arc<String>,
     shared_session: Arc<Mutex<Session>>,
@@ -332,7 +340,7 @@ async fn serve_connection(
             SessionReadyData {
                 protocol_version: PROTOCOL_VERSION,
                 state,
-                providers: source.capabilities(),
+                providers: query_service.capabilities(),
                 seeking: SeekingLimits::default(),
             },
         )?,
@@ -342,7 +350,7 @@ async fn serve_connection(
     let result = run_session(
         &mut sink,
         &mut socket,
-        source,
+        query_service,
         shared_session.clone(),
         shutdown_tx,
         config,
@@ -362,7 +370,7 @@ async fn serve_connection(
 async fn run_session(
     sink: &mut ClientSink,
     socket: &mut futures_util::stream::SplitStream<WebSocketStream<TcpStream>>,
-    source: Arc<dyn InfoSource>,
+    query_service: Arc<QueryService>,
     shared_session: Arc<Mutex<Session>>,
     shutdown_tx: watch::Sender<bool>,
     mut config: SeekingConfig,
@@ -480,7 +488,7 @@ async fn run_session(
                                     .sections
                                     .map(normalize_sections)
                                     .unwrap_or_else(|| InfoSection::ALL.to_vec());
-                                match snapshot_payload(&*source, &sections, &mut sequence) {
+                                match snapshot_payload(&query_service, &sections, &mut sequence) {
                                     Ok(snapshot) => {
                                         send_message(
                                             sink,
@@ -567,7 +575,7 @@ async fn run_session(
                                 .await?;
                                 send_snapshot_event(
                                     sink,
-                                    &*source,
+                                    &query_service,
                                     &config.sections,
                                     &mut sequence,
                                 )
@@ -700,7 +708,13 @@ async fn run_session(
             }
             _ = sleep_until(tick_deadline), if next_tick.is_some() => {
                 next_tick = Some(Instant::now() + Duration::from_millis(config.interval_ms));
-                send_snapshot_event(sink, &*source, &config.sections, &mut sequence).await?;
+                send_snapshot_event(
+                    sink,
+                    &query_service,
+                    &config.sections,
+                    &mut sequence,
+                )
+                .await?;
             }
         }
     }
@@ -708,11 +722,11 @@ async fn run_session(
 }
 
 fn snapshot_payload(
-    source: &dyn InfoSource,
+    query_service: &QueryService,
     sections: &[InfoSection],
     sequence: &mut u64,
 ) -> Result<SnapshotPayloadOwned, super::source::ProviderError> {
-    let hardware = source.snapshot(sections)?;
+    let hardware = query_service.snapshot(sections)?;
     *sequence += 1;
     Ok(SnapshotPayloadOwned {
         sequence: *sequence,
@@ -733,11 +747,11 @@ struct SnapshotPayloadOwned {
 
 async fn send_snapshot_event(
     sink: &mut ClientSink,
-    source: &dyn InfoSource,
+    query_service: &QueryService,
     sections: &[InfoSection],
     sequence: &mut u64,
 ) -> Result<(), ApiError> {
-    match snapshot_payload(source, sections, sequence) {
+    match snapshot_payload(query_service, sections, sequence) {
         Ok(snapshot) => {
             send_message(sink, ServerMessage::event("info.snapshot", snapshot)?).await?;
         }

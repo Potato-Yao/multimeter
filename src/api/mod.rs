@@ -1,4 +1,5 @@
 mod protocol;
+mod query;
 mod server;
 mod source;
 
@@ -11,5 +12,6 @@ pub use protocol::{
     PROTOCOL_VERSION, ProviderCapabilities, ProviderStatus, SeekingConfig, SeekingLimits,
     SeekingStartParams, SessionState,
 };
+pub use query::QueryService;
 pub use server::{ApiBootstrap, ApiError, ApiOptions, ApiServer};
 pub use source::{InfoSource, ProviderError, UnavailableInfoSource};
