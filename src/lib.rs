@@ -3,5 +3,6 @@ pub mod browser;
 pub mod config;
 pub mod cpu_test;
 pub mod elevation;
+pub mod gpu_burn;
 pub mod model;
 pub mod provider;
