@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cpu_test::CpuTestResult;
+use crate::gpu_burn::{GpuTestAdapter, GpuTestResult};
 use crate::model::InfoSection;
 
 pub const PROTOCOL_VERSION: u8 = 1;
@@ -49,6 +50,13 @@ pub enum SessionState {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CpuTestState {
+    Idle,
+    Running,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GpuTestState {
     Idle,
     Running,
 }
@@ -119,6 +127,7 @@ pub struct SessionReadyData {
     pub protocol_version: u8,
     pub state: SessionState,
     pub cpu_test: CpuTestStateData,
+    pub gpu_test: GpuTestStateData,
     pub providers: ProviderCapabilities,
     pub seeking: SeekingLimits,
 }
@@ -131,6 +140,11 @@ pub struct SeekingStateData {
 #[derive(Clone, Debug, Serialize)]
 pub struct CpuTestStateData {
     pub state: CpuTestState,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GpuTestStateData {
+    pub state: GpuTestState,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -177,6 +191,64 @@ pub struct CpuTestStopResult {
     pub state: CpuTestState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<CpuTestMetrics>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GpuTestAdapterInfo {
+    pub name: String,
+    pub backend: String,
+    pub device_type: String,
+    pub driver: String,
+    pub driver_info: String,
+}
+
+impl From<&GpuTestAdapter> for GpuTestAdapterInfo {
+    fn from(adapter: &GpuTestAdapter) -> Self {
+        Self {
+            name: adapter.name.clone(),
+            backend: adapter.backend.clone(),
+            device_type: adapter.device_type.clone(),
+            driver: adapter.driver.clone(),
+            driver_info: adapter.driver_info.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GpuTestStartResult {
+    pub state: GpuTestState,
+    pub adapter: GpuTestAdapterInfo,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GpuTestMetrics {
+    pub adapter: GpuTestAdapterInfo,
+    pub elapsed_ms: u64,
+    pub dispatch_count: u64,
+    pub element_rounds: u64,
+}
+
+impl From<GpuTestResult> for GpuTestMetrics {
+    fn from(result: GpuTestResult) -> Self {
+        Self {
+            adapter: GpuTestAdapterInfo::from(&result.adapter),
+            elapsed_ms: u64::try_from(result.elapsed.as_millis()).unwrap_or(u64::MAX),
+            dispatch_count: result.dispatch_count,
+            element_rounds: result.element_rounds,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GpuTestStopResult {
+    pub state: GpuTestState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<GpuTestMetrics>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct GpuTestFailureData {
+    pub message: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

@@ -86,7 +86,11 @@ async fn send(socket: &mut Client, value: Value) {
 }
 
 async fn next_json(socket: &mut Client) -> Value {
-    let message = timeout(Duration::from_secs(1), socket.next())
+    next_json_with_timeout(socket, Duration::from_secs(1)).await
+}
+
+async fn next_json_with_timeout(socket: &mut Client, wait: Duration) -> Value {
+    let message = timeout(wait, socket.next())
         .await
         .expect("message should arrive before timeout")
         .expect("socket should remain open")
@@ -113,6 +117,7 @@ async fn supports_query_seeking_pause_and_shutdown() {
     assert_eq!(ready["event"], "session.ready");
     assert_eq!(ready["data"]["state"], "idle");
     assert_eq!(ready["data"]["cpu_test"]["state"], "idle");
+    assert_eq!(ready["data"]["gpu_test"]["state"], "idle");
     assert_eq!(ready["data"]["providers"]["sysinfo"]["available"], true);
     assert_eq!(ready["data"]["providers"]["nvml"]["available"], false);
 
@@ -296,6 +301,129 @@ async fn supports_infinite_cpu_test_start_and_stop() {
     .await;
     let repeated_stop = next_json(&mut socket).await;
     assert_eq!(repeated_stop["id"], "cpu-stop-2");
+    assert_eq!(repeated_stop["result"]["state"], "idle");
+    assert!(repeated_stop["result"]["result"].is_null());
+    assert_eq!(next_json(&mut socket).await["data"]["state"], "idle");
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn supports_gpu_test_start_and_stop_when_available() {
+    let (bootstrap, server_task) = spawn_server().await;
+    let mut socket = connect(&bootstrap).await;
+    let ready = next_json(&mut socket).await;
+    assert_eq!(ready["data"]["gpu_test"]["state"], "idle");
+
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "gpu-stop-empty",
+            "command": "gpu_test.stop",
+            "params": {}
+        }),
+    )
+    .await;
+    let empty_stop = next_json(&mut socket).await;
+    assert_eq!(empty_stop["id"], "gpu-stop-empty");
+    assert_eq!(empty_stop["result"]["state"], "idle");
+    assert!(empty_stop["result"]["result"].is_null());
+    assert_eq!(next_json(&mut socket).await["data"]["state"], "idle");
+
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "gpu-start-1",
+            "command": "gpu_test.start",
+            "params": {}
+        }),
+    )
+    .await;
+    let start_response = next_json_with_timeout(&mut socket, Duration::from_secs(5)).await;
+    assert_eq!(start_response["id"], "gpu-start-1");
+
+    if start_response["ok"] == false {
+        assert_eq!(
+            start_response["error"]["code"], "gpu_test_unavailable",
+            "unexpected GPU startup error: {start_response}"
+        );
+        server_task.abort();
+        return;
+    }
+
+    assert_eq!(start_response["result"]["state"], "running");
+    assert!(
+        start_response["result"]["adapter"]["name"]
+            .as_str()
+            .is_some_and(|name| !name.is_empty())
+    );
+    assert!(
+        start_response["result"]["adapter"]["backend"]
+            .as_str()
+            .is_some_and(|backend| !backend.is_empty())
+    );
+    assert_ne!(start_response["result"]["adapter"]["device_type"], "cpu");
+    assert_eq!(next_json(&mut socket).await["data"]["state"], "running");
+
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "gpu-start-2",
+            "command": "gpu_test.start",
+            "params": {}
+        }),
+    )
+    .await;
+    let repeated_start = next_json(&mut socket).await;
+    assert_eq!(repeated_start["id"], "gpu-start-2");
+    assert_eq!(repeated_start["result"]["state"], "running");
+    assert_eq!(
+        repeated_start["result"]["adapter"],
+        start_response["result"]["adapter"]
+    );
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "gpu-stop-1",
+            "command": "gpu_test.stop",
+            "params": {}
+        }),
+    )
+    .await;
+    let stop_response = next_json_with_timeout(&mut socket, Duration::from_secs(5)).await;
+    assert_eq!(stop_response["id"], "gpu-stop-1");
+    assert_eq!(stop_response["ok"], true);
+    assert_eq!(stop_response["result"]["state"], "idle");
+    assert!(
+        stop_response["result"]["result"]["dispatch_count"]
+            .as_u64()
+            .is_some_and(|dispatch_count| dispatch_count > 0)
+    );
+    assert!(
+        stop_response["result"]["result"]["element_rounds"]
+            .as_u64()
+            .is_some_and(|element_rounds| element_rounds > 0)
+    );
+    assert_eq!(next_json(&mut socket).await["data"]["state"], "idle");
+
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "gpu-stop-2",
+            "command": "gpu_test.stop",
+            "params": {}
+        }),
+    )
+    .await;
+    let repeated_stop = next_json(&mut socket).await;
+    assert_eq!(repeated_stop["id"], "gpu-stop-2");
     assert_eq!(repeated_stop["result"]["state"], "idle");
     assert!(repeated_stop["result"]["result"].is_null());
     assert_eq!(next_json(&mut socket).await["data"]["state"], "idle");

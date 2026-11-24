@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use std::future::pending;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,8 +20,10 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
+use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::task::JoinSet;
+use tokio::task::spawn_blocking;
 use tokio::time::Instant;
 use tokio::time::sleep_until;
 use tokio::time::timeout;
@@ -33,13 +36,16 @@ use tokio_tungstenite::tungstenite::handshake::server::Response;
 
 use crate::config::FRONTEND_BASE_URL;
 use crate::cpu_test::{CpuTestMode, CpuTestRun, start_cpu_test};
+use crate::gpu_burn::{GpuTestFailure, GpuTestMode, GpuTestRun, start_gpu_test};
 use crate::model::{HardwareSnapshot, InfoSection, normalize_sections};
 
 use super::protocol::{
     ApiErrorPayload, ClientMessage, CpuTestMetrics, CpuTestStartResult, CpuTestState,
-    CpuTestStateData, CpuTestStopResult, InfoQueryParams, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
-    PROTOCOL_VERSION, SeekingConfig, SeekingLimits, SeekingResult, SeekingStartParams,
-    SeekingStateData, ServerMessage, SessionClosedData, SessionReadyData, SessionState,
+    CpuTestStateData, CpuTestStopResult, GpuTestAdapterInfo, GpuTestFailureData, GpuTestMetrics,
+    GpuTestStartResult, GpuTestState, GpuTestStateData, GpuTestStopResult, InfoQueryParams,
+    MAX_INTERVAL_MS, MIN_INTERVAL_MS, PROTOCOL_VERSION, SeekingConfig, SeekingLimits,
+    SeekingResult, SeekingStartParams, SeekingStateData, ServerMessage, SessionClosedData,
+    SessionReadyData, SessionState,
 };
 use super::query::QueryService;
 use super::source::InfoSource;
@@ -345,6 +351,9 @@ async fn serve_connection(
                 cpu_test: CpuTestStateData {
                     state: CpuTestState::Idle,
                 },
+                gpu_test: GpuTestStateData {
+                    state: GpuTestState::Idle,
+                },
                 providers: query_service.capabilities(),
                 seeking: SeekingLimits::default(),
             },
@@ -382,6 +391,8 @@ async fn run_session(
 ) -> Result<(), ApiError> {
     let mut state = shared_session.lock().await.state.clone();
     let mut cpu_test: Option<CpuTestRun> = None;
+    let mut gpu_test: Option<GpuTestRun> = None;
+    let mut gpu_failure: Option<oneshot::Receiver<GpuTestFailure>> = None;
     let mut sequence = 0_u64;
     let mut next_tick: Option<Instant> = None;
 
@@ -764,6 +775,169 @@ async fn run_session(
                                 )
                                 .await?;
                             }
+                            "gpu_test.start" => {
+                                if !message.params.is_null() && !message.params.is_object() {
+                                    send_message(
+                                        sink,
+                                        ServerMessage::failure(
+                                            id,
+                                            ApiErrorPayload::new(
+                                                "invalid_request",
+                                                "params must be an object or null",
+                                            ),
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                                if let Some(run) = gpu_test.as_ref() {
+                                    send_message(
+                                        sink,
+                                        ServerMessage::success(
+                                            id,
+                                            GpuTestStartResult {
+                                                state: GpuTestState::Running,
+                                                adapter: GpuTestAdapterInfo::from(run.adapter()),
+                                            },
+                                        )?,
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+
+                                let start_result =
+                                    spawn_blocking(|| start_gpu_test(GpuTestMode::Infinite)).await;
+                                match start_result {
+                                    Ok(Ok(mut run)) => {
+                                        let adapter =
+                                            GpuTestAdapterInfo::from(run.adapter());
+                                        gpu_failure = run.take_failure_receiver();
+                                        gpu_test = Some(run);
+                                        send_message(
+                                            sink,
+                                            ServerMessage::success(
+                                                id,
+                                                GpuTestStartResult {
+                                                    state: GpuTestState::Running,
+                                                    adapter,
+                                                },
+                                            )?,
+                                        )
+                                        .await?;
+                                        send_message(
+                                            sink,
+                                            ServerMessage::event(
+                                                "gpu_test.state",
+                                                GpuTestStateData {
+                                                    state: GpuTestState::Running,
+                                                },
+                                            )?,
+                                        )
+                                        .await?;
+                                    }
+                                    Ok(Err(error)) => {
+                                        let code = if matches!(
+                                            error.kind(),
+                                            std::io::ErrorKind::Unsupported
+                                                | std::io::ErrorKind::NotFound
+                                        ) {
+                                            "gpu_test_unavailable"
+                                        } else {
+                                            "gpu_test_start_failed"
+                                        };
+                                        send_message(
+                                            sink,
+                                            ServerMessage::failure(
+                                                id,
+                                                ApiErrorPayload::new(code, error.to_string()),
+                                            ),
+                                        )
+                                        .await?;
+                                    }
+                                    Err(error) => {
+                                        send_message(
+                                            sink,
+                                            ServerMessage::failure(
+                                                id,
+                                                ApiErrorPayload::new(
+                                                    "gpu_test_start_failed",
+                                                    format!(
+                                                        "GPU test worker could not start: {error}"
+                                                    ),
+                                                ),
+                                            ),
+                                        )
+                                        .await?;
+                                    }
+                                }
+                            }
+                            "gpu_test.stop" => {
+                                if !message.params.is_null() && !message.params.is_object() {
+                                    send_message(
+                                        sink,
+                                        ServerMessage::failure(
+                                            id,
+                                            ApiErrorPayload::new(
+                                                "invalid_request",
+                                                "params must be an object or null",
+                                            ),
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+
+                                gpu_failure = None;
+                                let stop_result = match gpu_test.take() {
+                                    Some(run) => match spawn_blocking(move || run.stop()).await {
+                                        Ok(result) => {
+                                            result.map(|result| Some(GpuTestMetrics::from(result)))
+                                        }
+                                        Err(error) => Err(std::io::Error::other(format!(
+                                            "GPU test worker could not be joined: {error}"
+                                        ))),
+                                    },
+                                    None => Ok(None),
+                                };
+                                match stop_result {
+                                    Ok(result) => {
+                                        send_message(
+                                            sink,
+                                            ServerMessage::success(
+                                                id,
+                                                GpuTestStopResult {
+                                                    state: GpuTestState::Idle,
+                                                    result,
+                                                },
+                                            )?,
+                                        )
+                                        .await?;
+                                    }
+                                    Err(error) => {
+                                        send_message(
+                                            sink,
+                                            ServerMessage::failure(
+                                                id,
+                                                ApiErrorPayload::new(
+                                                    "gpu_test_stop_failed",
+                                                    error.to_string(),
+                                                ),
+                                            ),
+                                        )
+                                        .await?;
+                                    }
+                                }
+                                send_message(
+                                    sink,
+                                    ServerMessage::event(
+                                        "gpu_test.state",
+                                        GpuTestStateData {
+                                            state: GpuTestState::Idle,
+                                        },
+                                    )?,
+                                )
+                                .await?;
+                            }
                             "app.shutdown" => {
                                 if !message.params.is_null() && !message.params.is_object() {
                                     send_message(
@@ -781,6 +955,9 @@ async fn run_session(
                                 }
                                 if let Some(run) = cpu_test.take() {
                                     let _ = run.stop();
+                                }
+                                if let Some(run) = gpu_test.take() {
+                                    let _ = spawn_blocking(move || run.stop()).await;
                                 }
                                 state = SessionState::Closing;
                                 {
@@ -845,6 +1022,32 @@ async fn run_session(
                     Message::Pong(_) | Message::Frame(_) => {}
                 }
             }
+            failure = wait_for_gpu_failure(&mut gpu_failure), if gpu_failure.is_some() => {
+                gpu_failure = None;
+                if let Some(run) = gpu_test.take() {
+                    let _ = spawn_blocking(move || run.stop()).await;
+                }
+                send_message(
+                    sink,
+                    ServerMessage::event(
+                        "gpu_test.failed",
+                        GpuTestFailureData {
+                            message: failure.message,
+                        },
+                    )?,
+                )
+                .await?;
+                send_message(
+                    sink,
+                    ServerMessage::event(
+                        "gpu_test.state",
+                        GpuTestStateData {
+                            state: GpuTestState::Idle,
+                        },
+                    )?,
+                )
+                .await?;
+            }
             _ = sleep_until(tick_deadline), if next_tick.is_some() => {
                 next_tick = Some(Instant::now() + Duration::from_millis(config.interval_ms));
                 send_snapshot_event(
@@ -857,7 +1060,23 @@ async fn run_session(
             }
         }
     }
+
+    if let Some(run) = gpu_test.take() {
+        let _ = spawn_blocking(move || run.stop()).await;
+    }
     Ok(())
+}
+
+async fn wait_for_gpu_failure(
+    receiver: &mut Option<oneshot::Receiver<GpuTestFailure>>,
+) -> GpuTestFailure {
+    let Some(receiver) = receiver.as_mut() else {
+        return pending().await;
+    };
+
+    receiver.await.unwrap_or_else(|_| GpuTestFailure {
+        message: "GPU test worker stopped unexpectedly".to_owned(),
+    })
 }
 
 fn snapshot_payload(

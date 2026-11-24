@@ -9,9 +9,10 @@ pub use crate::model::{
 };
 pub use protocol::{
     ApiErrorPayload, ClientMessage, CpuTestMetrics, CpuTestStartResult, CpuTestState,
-    CpuTestStateData, CpuTestStopResult, InfoQueryParams, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
-    PROTOCOL_VERSION, ProviderCapabilities, ProviderStatus, SeekingConfig, SeekingLimits,
-    SeekingStartParams, SessionState,
+    CpuTestStateData, CpuTestStopResult, GpuTestAdapterInfo, GpuTestFailureData, GpuTestMetrics,
+    GpuTestStartResult, GpuTestState, GpuTestStateData, GpuTestStopResult, InfoQueryParams,
+    MAX_INTERVAL_MS, MIN_INTERVAL_MS, PROTOCOL_VERSION, ProviderCapabilities, ProviderStatus,
+    SeekingConfig, SeekingLimits, SeekingStartParams, SessionState,
 };
 pub use query::QueryService;
 pub use server::{ApiBootstrap, ApiError, ApiOptions, ApiServer};
