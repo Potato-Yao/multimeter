@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::cpu_test::CpuTestResult;
 use crate::model::InfoSection;
 
 pub const PROTOCOL_VERSION: u8 = 1;
@@ -43,6 +44,13 @@ pub enum SessionState {
     Seeking,
     Paused,
     Closing,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CpuTestState {
+    Idle,
+    Running,
 }
 
 #[derive(Clone, Debug)]
@@ -110,6 +118,7 @@ pub struct ProviderCapabilities {
 pub struct SessionReadyData {
     pub protocol_version: u8,
     pub state: SessionState,
+    pub cpu_test: CpuTestStateData,
     pub providers: ProviderCapabilities,
     pub seeking: SeekingLimits,
 }
@@ -117,6 +126,11 @@ pub struct SessionReadyData {
 #[derive(Clone, Debug, Serialize)]
 pub struct SeekingStateData {
     pub state: SessionState,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CpuTestStateData {
+    pub state: CpuTestState,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -129,6 +143,40 @@ pub struct SeekingResult {
     pub state: SessionState,
     pub interval_ms: u64,
     pub sections: Vec<InfoSection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CpuTestStartResult {
+    pub state: CpuTestState,
+    pub worker_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CpuTestMetrics {
+    pub worker_count: usize,
+    pub batch_size: usize,
+    pub elapsed_ms: u64,
+    pub multiply_count: u64,
+    pub multiplies_per_second: f64,
+}
+
+impl From<CpuTestResult> for CpuTestMetrics {
+    fn from(result: CpuTestResult) -> Self {
+        Self {
+            worker_count: result.worker_count,
+            batch_size: result.batch_size,
+            elapsed_ms: u64::try_from(result.elapsed.as_millis()).unwrap_or(u64::MAX),
+            multiply_count: result.multiply_count,
+            multiplies_per_second: result.multiplies_per_second,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CpuTestStopResult {
+    pub state: CpuTestState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<CpuTestMetrics>,
 }
 
 #[derive(Clone, Debug, Serialize)]

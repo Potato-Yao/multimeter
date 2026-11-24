@@ -32,10 +32,12 @@ use tokio_tungstenite::tungstenite::handshake::server::Request;
 use tokio_tungstenite::tungstenite::handshake::server::Response;
 
 use crate::config::FRONTEND_BASE_URL;
+use crate::cpu_test::{CpuTestMode, CpuTestRun, start_cpu_test};
 use crate::model::{HardwareSnapshot, InfoSection, normalize_sections};
 
 use super::protocol::{
-    ApiErrorPayload, ClientMessage, InfoQueryParams, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
+    ApiErrorPayload, ClientMessage, CpuTestMetrics, CpuTestStartResult, CpuTestState,
+    CpuTestStateData, CpuTestStopResult, InfoQueryParams, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
     PROTOCOL_VERSION, SeekingConfig, SeekingLimits, SeekingResult, SeekingStartParams,
     SeekingStateData, ServerMessage, SessionClosedData, SessionReadyData, SessionState,
 };
@@ -340,6 +342,9 @@ async fn serve_connection(
             SessionReadyData {
                 protocol_version: PROTOCOL_VERSION,
                 state,
+                cpu_test: CpuTestStateData {
+                    state: CpuTestState::Idle,
+                },
                 providers: query_service.capabilities(),
                 seeking: SeekingLimits::default(),
             },
@@ -376,6 +381,7 @@ async fn run_session(
     mut config: SeekingConfig,
 ) -> Result<(), ApiError> {
     let mut state = shared_session.lock().await.state.clone();
+    let mut cpu_test: Option<CpuTestRun> = None;
     let mut sequence = 0_u64;
     let mut next_tick: Option<Instant> = None;
 
@@ -628,6 +634,136 @@ async fn run_session(
                                 )
                                 .await?;
                             }
+                            "cpu_test.start" => {
+                                if !message.params.is_null() && !message.params.is_object() {
+                                    send_message(
+                                        sink,
+                                        ServerMessage::failure(
+                                            id,
+                                            ApiErrorPayload::new(
+                                                "invalid_request",
+                                                "params must be an object or null",
+                                            ),
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                                if let Some(run) = cpu_test.as_ref() {
+                                    send_message(
+                                        sink,
+                                        ServerMessage::success(
+                                            id,
+                                            CpuTestStartResult {
+                                                state: CpuTestState::Running,
+                                                worker_count: run.worker_count(),
+                                            },
+                                        )?,
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                                match start_cpu_test(CpuTestMode::Infinite) {
+                                    Ok(run) => {
+                                        let worker_count = run.worker_count();
+                                        cpu_test = Some(run);
+                                        send_message(
+                                            sink,
+                                            ServerMessage::success(
+                                                id,
+                                                CpuTestStartResult {
+                                                    state: CpuTestState::Running,
+                                                    worker_count,
+                                                },
+                                            )?,
+                                        )
+                                        .await?;
+                                        send_message(
+                                            sink,
+                                            ServerMessage::event(
+                                                "cpu_test.state",
+                                                CpuTestStateData {
+                                                    state: CpuTestState::Running,
+                                                },
+                                            )?,
+                                        )
+                                        .await?;
+                                    }
+                                    Err(error) => {
+                                        send_message(
+                                            sink,
+                                            ServerMessage::failure(
+                                                id,
+                                                ApiErrorPayload::new(
+                                                    "cpu_test_start_failed",
+                                                    error.to_string(),
+                                                ),
+                                            ),
+                                        )
+                                        .await?;
+                                    }
+                                }
+                            }
+                            "cpu_test.stop" => {
+                                if !message.params.is_null() && !message.params.is_object() {
+                                    send_message(
+                                        sink,
+                                        ServerMessage::failure(
+                                            id,
+                                            ApiErrorPayload::new(
+                                                "invalid_request",
+                                                "params must be an object or null",
+                                            ),
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                                let stop_result = match cpu_test.take() {
+                                    Some(run) => run
+                                        .stop()
+                                        .map(|result| Some(CpuTestMetrics::from(result))),
+                                    None => Ok(None),
+                                };
+                                match stop_result {
+                                    Ok(result) => {
+                                        send_message(
+                                            sink,
+                                            ServerMessage::success(
+                                                id,
+                                                CpuTestStopResult {
+                                                    state: CpuTestState::Idle,
+                                                    result,
+                                                },
+                                            )?,
+                                        )
+                                        .await?;
+                                    }
+                                    Err(error) => {
+                                        send_message(
+                                            sink,
+                                            ServerMessage::failure(
+                                                id,
+                                                ApiErrorPayload::new(
+                                                    "cpu_test_stop_failed",
+                                                    error.to_string(),
+                                                ),
+                                            ),
+                                        )
+                                        .await?;
+                                    }
+                                }
+                                send_message(
+                                    sink,
+                                    ServerMessage::event(
+                                        "cpu_test.state",
+                                        CpuTestStateData {
+                                            state: CpuTestState::Idle,
+                                        },
+                                    )?,
+                                )
+                                .await?;
+                            }
                             "app.shutdown" => {
                                 if !message.params.is_null() && !message.params.is_object() {
                                     send_message(
@@ -642,6 +778,9 @@ async fn run_session(
                                     )
                                     .await?;
                                     continue;
+                                }
+                                if let Some(run) = cpu_test.take() {
+                                    let _ = run.stop();
                                 }
                                 state = SessionState::Closing;
                                 {

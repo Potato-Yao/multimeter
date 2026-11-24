@@ -8,7 +8,8 @@ pub use crate::model::{
     LoadAverage, MemoryInfo, NetworkInfo, PlatformInfo, SwapInfo, SystemInfo, normalize_sections,
 };
 pub use protocol::{
-    ApiErrorPayload, ClientMessage, InfoQueryParams, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
+    ApiErrorPayload, ClientMessage, CpuTestMetrics, CpuTestStartResult, CpuTestState,
+    CpuTestStateData, CpuTestStopResult, InfoQueryParams, MAX_INTERVAL_MS, MIN_INTERVAL_MS,
     PROTOCOL_VERSION, ProviderCapabilities, ProviderStatus, SeekingConfig, SeekingLimits,
     SeekingStartParams, SessionState,
 };

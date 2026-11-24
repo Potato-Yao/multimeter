@@ -112,6 +112,7 @@ async fn supports_query_seeking_pause_and_shutdown() {
     assert_eq!(ready["type"], "event");
     assert_eq!(ready["event"], "session.ready");
     assert_eq!(ready["data"]["state"], "idle");
+    assert_eq!(ready["data"]["cpu_test"]["state"], "idle");
     assert_eq!(ready["data"]["providers"]["sysinfo"]["available"], true);
     assert_eq!(ready["data"]["providers"]["nvml"]["available"], false);
 
@@ -212,6 +213,94 @@ async fn supports_query_seeking_pause_and_shutdown() {
         .expect("server should stop")
         .expect("server task should not panic")
         .expect("server should stop cleanly");
+}
+
+#[tokio::test]
+async fn supports_infinite_cpu_test_start_and_stop() {
+    let (bootstrap, server_task) = spawn_server().await;
+    let mut socket = connect(&bootstrap).await;
+    let ready = next_json(&mut socket).await;
+    assert_eq!(ready["data"]["cpu_test"]["state"], "idle");
+
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "cpu-start-1",
+            "command": "cpu_test.start",
+            "params": {}
+        }),
+    )
+    .await;
+    let start_response = next_json(&mut socket).await;
+    assert_eq!(start_response["id"], "cpu-start-1");
+    assert_eq!(start_response["ok"], true);
+    assert_eq!(start_response["result"]["state"], "running");
+    let worker_count = start_response["result"]["worker_count"]
+        .as_u64()
+        .expect("worker count should be an integer");
+    assert!(worker_count > 0);
+    assert_eq!(next_json(&mut socket).await["data"]["state"], "running");
+
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "cpu-start-2",
+            "command": "cpu_test.start",
+            "params": {}
+        }),
+    )
+    .await;
+    let repeated_start = next_json(&mut socket).await;
+    assert_eq!(repeated_start["id"], "cpu-start-2");
+    assert_eq!(repeated_start["result"]["state"], "running");
+    assert_eq!(repeated_start["result"]["worker_count"], worker_count);
+
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "cpu-stop-1",
+            "command": "cpu_test.stop",
+            "params": {}
+        }),
+    )
+    .await;
+    let stop_response = next_json(&mut socket).await;
+    assert_eq!(stop_response["id"], "cpu-stop-1");
+    assert_eq!(stop_response["ok"], true);
+    assert_eq!(stop_response["result"]["state"], "idle");
+    assert_eq!(
+        stop_response["result"]["result"]["worker_count"],
+        worker_count
+    );
+    assert!(
+        stop_response["result"]["result"]["batch_size"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert_eq!(next_json(&mut socket).await["data"]["state"], "idle");
+
+    send(
+        &mut socket,
+        json!({
+            "type": "command",
+            "id": "cpu-stop-2",
+            "command": "cpu_test.stop",
+            "params": {}
+        }),
+    )
+    .await;
+    let repeated_stop = next_json(&mut socket).await;
+    assert_eq!(repeated_stop["id"], "cpu-stop-2");
+    assert_eq!(repeated_stop["result"]["state"], "idle");
+    assert!(repeated_stop["result"]["result"].is_null());
+    assert_eq!(next_json(&mut socket).await["data"]["state"], "idle");
+
+    server_task.abort();
 }
 
 #[tokio::test]

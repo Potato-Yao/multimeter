@@ -90,6 +90,9 @@ After successful authentication:
   "data": {
     "protocol_version": 1,
     "state": "idle",
+    "cpu_test": {
+      "state": "idle"
+    },
     "providers": {
       "sysinfo": {
         "available": true
@@ -265,9 +268,102 @@ After the response and `seeking.state: paused` event, no further
 `seeking.start` while already seeking and `seeking.pause` while paused are
 idempotent successes.
 
+### `cpu_test.start`
+
+Starts an infinite CPU burn with one worker per logical CPU. The command returns
+immediately after the workers start; call `cpu_test.stop` when the test should
+end.
+
+```json
+{
+  "type": "command",
+  "id": "cpu-start-1",
+  "command": "cpu_test.start",
+  "params": {}
+}
+```
+
+Successful response:
+
+```json
+{
+  "type": "response",
+  "id": "cpu-start-1",
+  "ok": true,
+  "result": {
+    "state": "running",
+    "worker_count": 16
+  }
+}
+```
+
+The response is followed by:
+
+```json
+{
+  "type": "event",
+  "event": "cpu_test.state",
+  "data": {
+    "state": "running"
+  }
+}
+```
+
+Starting while a test is already running is an idempotent success. It does not
+start additional workers or emit another state event.
+
+### `cpu_test.stop`
+
+Stops the active CPU burn and returns the operations completed so far.
+
+```json
+{
+  "type": "command",
+  "id": "cpu-stop-1",
+  "command": "cpu_test.stop",
+  "params": {}
+}
+```
+
+Successful response:
+
+```json
+{
+  "type": "response",
+  "id": "cpu-stop-1",
+  "ok": true,
+  "result": {
+    "state": "idle",
+    "result": {
+      "worker_count": 16,
+      "batch_size": 1024,
+      "elapsed_ms": 5021,
+      "multiply_count": 17809121792,
+      "multiplies_per_second": 3546896813.5
+    }
+  }
+}
+```
+
+The response is followed by:
+
+```json
+{
+  "type": "event",
+  "event": "cpu_test.state",
+  "data": {
+    "state": "idle"
+  }
+}
+```
+
+Stopping while no test is running is an idempotent success with no `result`
+field. CPU test state is independent of `seeking` state. CPU workers count a
+multiplication only after completing a full batch.
+
 ### `app.shutdown`
 
-Stops collection and terminates the API process.
+Stops collection, stops any active CPU test, and terminates the API process.
 
 ```json
 {
@@ -322,6 +418,8 @@ Malformed messages that cannot be correlated to a request emit
 - `unknown_command`
 - `invalid_json`
 - `request_too_large`
+- `cpu_test_start_failed`
+- `cpu_test_stop_failed`
 
 Malformed JSON and unsupported message types do not close an authenticated
 session. Authentication failures, oversized authentication messages, origin
@@ -333,6 +431,11 @@ Valid states are `idle`, `seeking`, `paused`, and `closing`.
 
 If the browser disconnects while seeking, the server records the session as
 `paused`. Reconnecting with the same launch token reports the paused state, and
-the page may call `seeking.start` again. A disconnected session does not exit
-the process automatically; `app.shutdown`, process interruption, or the
-operating system ends it.
+the page may call `seeking.start` again.
+
+CPU test state is reported separately as `idle` or `running`. An active CPU
+test is cancelled automatically when its WebSocket session disconnects or the
+process shuts down. Reconnecting starts with CPU test state `idle`.
+
+A disconnected session does not exit the process automatically;
+`app.shutdown`, process interruption, or the operating system ends it.
