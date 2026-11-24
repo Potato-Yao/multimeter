@@ -65,16 +65,16 @@ jobs:
           tar -czf "dist/multimeter-${GITHUB_REF_NAME}-${TARGET}.tar.gz" \
             -C "target/${TARGET}/release" multimeter
 
-      - name: Package Windows executable
+      - name: Copy Windows executable
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           TARGET: ${{ matrix.target }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive `
+          Copy-Item `
             -Path "target/$env:TARGET/release/multimeter.exe" `
-            -DestinationPath "dist/multimeter-$env:GITHUB_REF_NAME-$env:TARGET.zip"
+            -Destination "dist/multimeter-$env:GITHUB_REF_NAME-$env:TARGET.exe"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
