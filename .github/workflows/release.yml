@@ -56,14 +56,15 @@ jobs:
       - name: Build release executable
         run: cargo build --locked --release --target "${{ matrix.target }}"
 
-      - name: Package Linux executable
+      - name: Copy Linux executable
         if: runner.os == 'Linux'
         env:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p dist
-          tar -czf "dist/multimeter-${GITHUB_REF_NAME}-${TARGET}.tar.gz" \
-            -C "target/${TARGET}/release" multimeter
+          install -m 755 \
+            "target/${TARGET}/release/multimeter" \
+            "dist/multimeter-${GITHUB_REF_NAME}-${TARGET}"
 
       - name: Copy Windows executable
         if: runner.os == 'Windows'
