@@ -49,6 +49,42 @@ uses `http://` or `https://`. The value is embedded at compile time and exposed
 as `multimeter::config::FRONTEND_BASE_URL`. It is not read from the end-user's
 environment at runtime.
 
+## Local websocat testing
+
+Build the executable as the normal user, then use the platform-specific local
+test launcher. Do not run Cargo itself with administrator privileges.
+
+On Linux:
+
+```sh
+./scripts/test-local.sh
+```
+
+The script requests `sudo` elevation, launches the executable with
+`--no-browser`, extracts the generated WebSocket URL and authentication token
+from the launch URL, sends the authentication frame, and opens an interactive
+`websocat` session. Pass `--executable PATH` when the binary is not in a normal
+Cargo output directory.
+
+On Windows, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\test-local.ps1
+```
+
+The script requests UAC elevation through PowerShell and otherwise provides the
+same local `websocat` workflow. Pass `-Executable PATH` when needed.
+
+Both scripts stop multimeter when `websocat` exits. Input is one JSON message
+per line, for example:
+
+```json
+{"type":"command","id":"query-1","command":"info.query","params":{"sections":["cpu","memory"]}}
+```
+
+The `--no-browser` executable option suppresses the automatic frontend launch;
+normal startup still opens the configured frontend URL.
+
 ## Bootstrap
 
 The page receives a URL-safe, base64-encoded JSON payload in the URL fragment:
