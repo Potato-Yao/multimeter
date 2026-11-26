@@ -210,7 +210,9 @@ provider or section is unavailable.
 ### Power telemetry
 
 `cpu.power_watts` reports total processor package power across sockets. On
-Linux it is derived from the package-level RAPL `energy_uj` counters.
+Linux it is derived from the package-level RAPL `energy_uj` counters. On
+Windows 11 it comes from the `Energy Meter` RAPL package counters and is cached
+to match their approximately one-second update interval.
 
 CPU power from an energy counter is an average over the interval since the
 previous successful sample. The first CPU snapshot after collection starts or

@@ -1,5 +1,7 @@
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use std::sync::Mutex;
 
@@ -30,7 +32,6 @@ trait PowerBackend: Send {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(target_os = "windows", allow(dead_code))]
 enum BackendSample {
     Watts(f32),
     TooSoon,
@@ -153,7 +154,7 @@ fn probe_backend() -> Result<Box<dyn PowerBackend>, String> {
 
 #[cfg(target_os = "windows")]
 fn probe_backend() -> Result<Box<dyn PowerBackend>, String> {
-    Err("Windows Energy Meter support is not enabled".to_owned())
+    windows::probe()
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
