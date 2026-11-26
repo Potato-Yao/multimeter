@@ -86,6 +86,8 @@ pub struct CpuInfo {
     pub logical_cores: u32,
     pub usage_percent: f32,
     pub frequency_mhz: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub power_watts: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub per_core_usage_percent: Vec<f32>,
 }
@@ -270,6 +272,7 @@ mod tests {
                 logical_cores: 8,
                 usage_percent: 25.0,
                 frequency_mhz: 3_200,
+                power_watts: Some(40.0),
                 per_core_usage_percent: vec![20.0, 30.0],
                 ..CpuInfo::default()
             }),
@@ -292,6 +295,7 @@ mod tests {
         let value = serde_json::to_value(snapshot).expect("snapshot should serialize");
         assert_eq!(value["platform"]["uptime_seconds"], 3_600);
         assert_eq!(value["cpu"]["frequency_mhz"], 3_200);
+        assert_eq!(value["cpu"]["power_watts"], 40.0);
         assert_eq!(value["cpu"]["per_core_usage_percent"], json!([20.0, 30.0]));
         assert_eq!(value["disks"][0]["available_bytes"], 250);
         assert_eq!(value["warnings"][0]["section"], "components");

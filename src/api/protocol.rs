@@ -120,6 +120,7 @@ impl ProviderStatus {
 pub struct ProviderCapabilities {
     pub sysinfo: ProviderStatus,
     pub nvml: ProviderStatus,
+    pub cpu_power: ProviderStatus,
 }
 
 #[derive(Clone, Debug, Serialize)]

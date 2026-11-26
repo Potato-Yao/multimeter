@@ -25,6 +25,10 @@ impl QueryService {
     pub fn snapshot(&self, sections: &[InfoSection]) -> Result<HardwareSnapshot, ProviderError> {
         self.source.snapshot(sections)
     }
+
+    pub fn reset_transient_samples(&self) {
+        self.source.reset_transient_samples();
+    }
 }
 
 #[cfg(test)]
@@ -40,6 +44,7 @@ mod tests {
 
     struct CountingSource {
         calls: AtomicUsize,
+        resets: AtomicUsize,
     }
 
     impl InfoSource for CountingSource {
@@ -47,6 +52,7 @@ mod tests {
             ProviderCapabilities {
                 sysinfo: ProviderStatus::available(),
                 nvml: ProviderStatus::unavailable("not present"),
+                cpu_power: ProviderStatus::unavailable("not present"),
             }
         }
 
@@ -54,12 +60,17 @@ mod tests {
             self.calls.fetch_add(1, Ordering::Relaxed);
             Ok(HardwareSnapshot::default())
         }
+
+        fn reset_transient_samples(&self) {
+            self.resets.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     #[test]
     fn queries_the_provider_on_every_request() {
         let source = Arc::new(CountingSource {
             calls: AtomicUsize::new(0),
+            resets: AtomicUsize::new(0),
         });
         let service = QueryService::new(source.clone());
 
@@ -71,5 +82,18 @@ mod tests {
             .expect("second query should succeed");
 
         assert_eq!(source.calls.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn delegates_transient_sample_resets() {
+        let source = Arc::new(CountingSource {
+            calls: AtomicUsize::new(0),
+            resets: AtomicUsize::new(0),
+        });
+        let service = QueryService::new(source.clone());
+
+        service.reset_transient_samples();
+
+        assert_eq!(source.resets.load(Ordering::Relaxed), 1);
     }
 }

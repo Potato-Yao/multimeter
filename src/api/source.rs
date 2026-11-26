@@ -32,6 +32,8 @@ pub trait InfoSource: Send + Sync {
     fn capabilities(&self) -> ProviderCapabilities;
 
     fn snapshot(&self, sections: &[InfoSection]) -> Result<HardwareSnapshot, ProviderError>;
+
+    fn reset_transient_samples(&self) {}
 }
 
 /// Temporary source used until the sysinfo and NVML provider integration lands.
@@ -42,6 +44,7 @@ impl InfoSource for UnavailableInfoSource {
         ProviderCapabilities {
             sysinfo: ProviderStatus::unavailable("provider integration pending"),
             nvml: ProviderStatus::unavailable("provider integration pending"),
+            cpu_power: ProviderStatus::unavailable("provider integration pending"),
         }
     }
 

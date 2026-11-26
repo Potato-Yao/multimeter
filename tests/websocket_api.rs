@@ -4,8 +4,8 @@ use std::time::Duration;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
 use multimeter::api::{
-    ApiBootstrap, ApiOptions, ApiServer, CpuInfo, HardwareSnapshot, InfoSection, InfoSource,
-    MemoryInfo, ProviderCapabilities, ProviderError, ProviderStatus,
+    ApiBootstrap, ApiOptions, ApiServer, CpuInfo, GpuInfo, HardwareSnapshot, InfoSection,
+    InfoSource, MemoryInfo, ProviderCapabilities, ProviderError, ProviderStatus,
 };
 use serde_json::Value;
 use serde_json::json;
@@ -23,7 +23,8 @@ impl InfoSource for FakeInfoSource {
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
             sysinfo: ProviderStatus::available(),
-            nvml: ProviderStatus::unavailable("no_supported_gpu"),
+            nvml: ProviderStatus::available(),
+            cpu_power: ProviderStatus::available(),
         }
     }
 
@@ -35,6 +36,7 @@ impl InfoSource for FakeInfoSource {
                 logical_cores: 8,
                 usage_percent: 25.0,
                 frequency_mhz: 3_200,
+                power_watts: Some(40.0),
                 ..CpuInfo::default()
             }),
             memory: sections
@@ -45,6 +47,14 @@ impl InfoSource for FakeInfoSource {
                     available_bytes: 12 * 1024 * 1024 * 1024,
                     ..MemoryInfo::default()
                 }),
+            gpus: sections.contains(&InfoSection::Gpus).then(|| {
+                vec![GpuInfo {
+                    index: 0,
+                    name: "Example GPU".to_owned(),
+                    power_watts: Some(75.0),
+                    ..GpuInfo::default()
+                }]
+            }),
             ..HardwareSnapshot::default()
         })
     }
@@ -119,7 +129,8 @@ async fn supports_query_seeking_pause_and_shutdown() {
     assert_eq!(ready["data"]["cpu_test"]["state"], "idle");
     assert_eq!(ready["data"]["gpu_test"]["state"], "idle");
     assert_eq!(ready["data"]["providers"]["sysinfo"]["available"], true);
-    assert_eq!(ready["data"]["providers"]["nvml"]["available"], false);
+    assert_eq!(ready["data"]["providers"]["nvml"]["available"], true);
+    assert_eq!(ready["data"]["providers"]["cpu_power"]["available"], true);
 
     send(
         &mut socket,
@@ -128,7 +139,7 @@ async fn supports_query_seeking_pause_and_shutdown() {
             "id": "query-1",
             "command": "info.query",
             "params": {
-                "sections": ["cpu", "memory"]
+                "sections": ["cpu", "memory", "gpus"]
             }
         }),
     )
@@ -140,7 +151,14 @@ async fn supports_query_seeking_pause_and_shutdown() {
         query_response["result"]["snapshot"]["cpu"]["logical_cores"],
         8
     );
-    assert!(query_response["result"]["snapshot"]["gpus"].is_null());
+    assert_eq!(
+        query_response["result"]["snapshot"]["cpu"]["power_watts"],
+        40.0
+    );
+    assert_eq!(
+        query_response["result"]["snapshot"]["gpus"][0]["power_watts"],
+        75.0
+    );
 
     send(
         &mut socket,

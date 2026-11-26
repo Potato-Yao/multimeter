@@ -87,6 +87,7 @@ impl InfoSource for SysinfoInfoSource {
         ProviderCapabilities {
             sysinfo: self.status(),
             nvml: ProviderStatus::unavailable("NVML is provided separately"),
+            cpu_power: ProviderStatus::unavailable("CPU power is provided separately"),
         }
     }
 
@@ -242,6 +243,7 @@ impl Collectors {
             logical_cores,
             usage_percent: self.system.global_cpu_usage(),
             frequency_mhz,
+            power_watts: None,
             per_core_usage_percent: cpus.iter().map(::sysinfo::Cpu::usage).collect(),
         }
     }

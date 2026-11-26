@@ -3,7 +3,9 @@ mod sysinfo;
 
 use std::sync::Arc;
 
-use crate::api::{HardwareSnapshot, InfoSection, InfoSource, ProviderCapabilities, ProviderError};
+use crate::api::{
+    HardwareSnapshot, InfoSection, InfoSource, ProviderCapabilities, ProviderError, ProviderStatus,
+};
 use crate::model::{GpuInfo, InfoWarning};
 
 pub use sysinfo::SysinfoInfoSource;
@@ -34,6 +36,7 @@ impl InfoSource for MultimeterInfoSource {
         ProviderCapabilities {
             sysinfo: self.sysinfo.status(),
             nvml: self.nvml.status(),
+            cpu_power: ProviderStatus::unavailable("CPU power collection is not integrated"),
         }
     }
 
