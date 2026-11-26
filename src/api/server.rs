@@ -364,7 +364,7 @@ async fn serve_connection(
     let result = run_session(
         &mut sink,
         &mut socket,
-        query_service,
+        query_service.clone(),
         shared_session.clone(),
         shutdown_tx,
         config,
@@ -377,6 +377,7 @@ async fn serve_connection(
             session.state = SessionState::Paused;
         }
     }
+    query_service.reset_transient_samples();
     drop(permit);
     result
 }
@@ -529,6 +530,7 @@ async fn run_session(
                                 }
                             }
                             "seeking.start" => {
+                                let was_seeking = matches!(state, SessionState::Seeking);
                                 let params: SeekingStartParams =
                                     match parse_params(message.params) {
                                         Ok(params) => params,
@@ -561,6 +563,9 @@ async fn run_session(
                                 config.interval_ms = interval_ms;
                                 if let Some(sections) = params.sections {
                                     config.sections = normalize_sections(sections);
+                                }
+                                if !was_seeking {
+                                    query_service.reset_transient_samples();
                                 }
                                 state = SessionState::Seeking;
 
@@ -617,6 +622,7 @@ async fn run_session(
                                 }
                                 if matches!(state, SessionState::Seeking) {
                                     state = SessionState::Paused;
+                                    query_service.reset_transient_samples();
                                 }
                                 next_tick = None;
                                 {

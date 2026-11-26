@@ -1,13 +1,13 @@
+mod cpu_power;
 mod nvml;
 mod sysinfo;
 
 use std::sync::Arc;
 
-use crate::api::{
-    HardwareSnapshot, InfoSection, InfoSource, ProviderCapabilities, ProviderError, ProviderStatus,
-};
+use crate::api::{HardwareSnapshot, InfoSection, InfoSource, ProviderCapabilities, ProviderError};
 use crate::model::{GpuInfo, InfoWarning};
 
+use cpu_power::CpuPowerSource;
 pub use sysinfo::SysinfoInfoSource;
 
 use nvml::NvmlInfoSource;
@@ -15,6 +15,7 @@ use nvml::NvmlInfoSource;
 /// Probed system and hardware providers used by the executable.
 pub struct MultimeterInfoSource {
     sysinfo: SysinfoInfoSource,
+    cpu_power: CpuPowerSource,
     nvml: NvmlInfoSource,
 }
 
@@ -22,6 +23,7 @@ impl MultimeterInfoSource {
     pub fn probe() -> Self {
         Self {
             sysinfo: SysinfoInfoSource::probe(),
+            cpu_power: CpuPowerSource::probe(),
             nvml: NvmlInfoSource::probe(),
         }
     }
@@ -36,18 +38,30 @@ impl InfoSource for MultimeterInfoSource {
         ProviderCapabilities {
             sysinfo: self.sysinfo.status(),
             nvml: self.nvml.status(),
-            cpu_power: ProviderStatus::unavailable("CPU power collection is not integrated"),
+            cpu_power: self.cpu_power.status(),
         }
     }
 
     fn snapshot(&self, sections: &[InfoSection]) -> Result<HardwareSnapshot, ProviderError> {
         let mut snapshot = self.sysinfo.snapshot(sections)?;
+        let sample_cpu_power = sections.contains(&InfoSection::Cpu) && snapshot.cpu.is_some();
+        let (cpu_power_watts, cpu_power_warning) = self.cpu_power.sample(sample_cpu_power);
+        if let Some(cpu) = snapshot.cpu.as_mut() {
+            cpu.power_watts = cpu_power_watts;
+        }
+        if let Some(warning) = cpu_power_warning {
+            snapshot.warnings.push(warning);
+        }
         if sections.contains(&InfoSection::Gpus) {
             let (gpus, warnings) = self.nvml.gpus();
             snapshot.gpus = gpus;
             snapshot.warnings.extend(warnings);
         }
         Ok(snapshot)
+    }
+
+    fn reset_transient_samples(&self) {
+        self.cpu_power.reset_transient_samples();
     }
 }
 

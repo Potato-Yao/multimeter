@@ -6,10 +6,10 @@ The executable exposes one local WebSocket session for both control commands and
 periodic hardware updates. The server binds to `127.0.0.1` on an ephemeral port
 and uses a random token generated for each launch.
 
-The executable probes `sysinfo` and NVML at startup, opens the configured
-frontend with a launch token, and serves fresh snapshots on demand. There is no
-background update service; seeking drives repeated snapshot requests from the
-session loop.
+The executable probes `sysinfo`, CPU package-power telemetry, and NVML at
+startup, opens the configured frontend with a launch token, and serves fresh
+snapshots on demand. There is no background update service; seeking drives
+repeated snapshot requests from the session loop.
 
 ## Elevated startup
 
@@ -100,6 +100,9 @@ After successful authentication:
       "nvml": {
         "available": false,
         "reason": "no_supported_gpu"
+      },
+      "cpu_power": {
+        "available": true
       }
     },
     "seeking": {
@@ -186,7 +189,8 @@ The result has the form:
         "physical_cores": 8,
         "logical_cores": 16,
         "usage_percent": 31.5,
-        "frequency_mhz": 3600
+        "frequency_mhz": 3600,
+        "power_watts": 38.4
       },
       "memory": {
         "total_bytes": 34359738368,
@@ -200,8 +204,24 @@ The result has the form:
 ```
 
 Values with explicit unit suffixes are stable API fields. Missing optional
-values are `null`. A successful query may include warnings when an optional
+values are omitted. A successful query may include warnings when an optional
 provider or section is unavailable.
+
+### Power telemetry
+
+`cpu.power_watts` reports total processor package power across sockets. On
+Linux it is derived from the package-level RAPL `energy_uj` counters.
+
+CPU power from an energy counter is an average over the interval since the
+previous successful sample. The first CPU snapshot after collection starts or
+resumes omits `power_watts` while a baseline is established; the next snapshot
+normally includes it. Unsupported hardware produces no value and a
+`cpu_power_unavailable` warning rather than failing the snapshot.
+
+`gpus[].power_watts` is the GPU device power reported by NVML for NVIDIA GPUs.
+Its averaging window and measurement scope are determined by the GPU and
+driver. GPU power remains optional even when the `nvml` provider is available.
+GPU telemetry for non-NVIDIA devices is not currently supported.
 
 ### `seeking.start`
 
@@ -237,7 +257,8 @@ The command produces a response, a `seeking.state` event, and an immediate
     "cpu": {
       "logical_cores": 16,
       "usage_percent": 25.4,
-      "frequency_mhz": 3600
+      "frequency_mhz": 3600,
+      "power_watts": 38.4
     },
     "warnings": []
   }
