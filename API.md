@@ -6,10 +6,10 @@ The executable exposes one local WebSocket session for both control commands and
 periodic hardware updates. The server binds to `127.0.0.1` on an ephemeral port
 and uses a random token generated for each launch.
 
-The executable probes `sysinfo`, CPU package-power telemetry, and NVML at
-startup, opens the configured frontend with a launch token, and serves fresh
-snapshots on demand. There is no background update service; seeking drives
-repeated snapshot requests from the session loop.
+The executable probes `sysinfo`, CPU package-power telemetry, NVML, and system
+batteries at startup, opens the configured frontend with a launch token, and
+serves fresh snapshots on demand. There is no background update service; seeking
+drives repeated snapshot requests from the session loop.
 
 ## Elevated startup
 
@@ -139,6 +139,9 @@ After successful authentication:
       },
       "cpu_power": {
         "available": true
+      },
+      "battery": {
+        "available": true
       }
     },
     "seeking": {
@@ -199,7 +202,7 @@ Failed response:
 
 Collects one fresh snapshot. Omitting `sections` requests every available
 section. Available sections are `platform`, `cpu`, `self`, `memory`, `swap`,
-`disks`, `networks`, `gpus`, and `components`.
+`disks`, `networks`, `gpus`, `components`, and `batteries`.
 
 ```json
 {
@@ -310,6 +313,76 @@ Its averaging window and measurement scope are determined by the GPU and
 driver. GPU power remains optional even when the `nvml` provider is available.
 GPU telemetry for non-NVIDIA devices is not currently supported.
 
+### Battery telemetry
+
+The `batteries` section uses the cross-platform API from
+[`starship/rust-battery`](https://github.com/starship/rust-battery). Each array
+entry describes one physical battery:
+
+```json
+{
+  "type": "command",
+  "id": "query-batteries",
+  "command": "info.query",
+  "params": {
+    "sections": ["batteries"]
+  }
+}
+```
+
+```json
+{
+  "type": "response",
+  "id": "query-batteries",
+  "ok": true,
+  "result": {
+    "snapshot": {
+      "sequence": 4,
+      "captured_at": "2026-11-27T08:30:00.000Z",
+      "batteries": [
+        {
+          "index": 0,
+          "vendor": "Example Vendor",
+          "model": "Example Battery",
+          "technology": "lithium-ion",
+          "state": "discharging",
+          "state_of_charge_percent": 73.4,
+          "state_of_health_percent": 91.2,
+          "energy_wh": 41.2,
+          "energy_full_wh": 56.3,
+          "energy_full_design_wh": 61.8,
+          "energy_rate_watts": 12.7,
+          "voltage_volts": 12.1,
+          "temperature_celsius": 31.4,
+          "cycle_count": 142,
+          "time_to_empty_seconds": 11640
+        }
+      ],
+      "warnings": []
+    }
+  }
+}
+```
+
+`technology` is one of the values exposed by the battery provider, such as
+`lithium-ion` or `unknown`. `state` is one of `unknown`, `charging`,
+`discharging`, `empty`, `full`, or `paused`.
+
+Charge and health percentages are clamped to `0..=100`. Energy is reported in
+watt-hours, rate in watts, voltage in volts, and remaining time in seconds.
+`energy_rate_watts` is a non-negative magnitude; use `state` to distinguish
+charging from discharging. The time fields are present only when the current
+state supports an estimate. Optional metadata and measurements are omitted when
+the firmware or operating system does not provide them. Serial numbers are not
+exposed.
+
+Battery capability is determined at startup. Systems without a battery report
+`providers.battery.available: false` with reason `no_battery_detected`; a queried
+`batteries` section then contains an empty array and a `no_battery_detected`
+warning. Provider failures produce `battery_unavailable` or
+`battery_read_failed` warnings without failing the entire snapshot. A failure
+reading one battery does not discard readings from other batteries.
+
 ### `seeking.start`
 
 Starts periodic snapshots, or updates the active configuration without dropping
@@ -322,7 +395,7 @@ the session.
   "command": "seeking.start",
   "params": {
     "interval_ms": 1000,
-    "sections": ["cpu", "self", "memory", "gpus", "components"]
+    "sections": ["cpu", "self", "memory", "gpus", "components", "batteries"]
   }
 }
 ```
