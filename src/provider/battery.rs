@@ -3,13 +3,21 @@ use battery::units::{
     thermodynamic_temperature::degree_celsius, time::second,
 };
 
-use crate::api::{BatteryInfo, InfoSection, InfoWarning};
+use crate::api::{BatteryInfo, InfoSection, InfoWarning, ProviderStatus};
 
-pub(super) struct BatteryInfoSource;
+pub(super) struct BatteryInfoSource {
+    status: ProviderStatus,
+}
 
 impl BatteryInfoSource {
-    pub fn new() -> Self {
-        Self
+    pub fn probe() -> Self {
+        Self {
+            status: probe_status(),
+        }
+    }
+
+    pub fn status(&self) -> ProviderStatus {
+        self.status.clone()
     }
 
     pub fn snapshot(&self) -> (Vec<BatteryInfo>, Vec<InfoWarning>) {
@@ -58,6 +66,36 @@ impl BatteryInfoSource {
 
         (output, warnings)
     }
+}
+
+fn probe_status() -> ProviderStatus {
+    let manager = match battery::Manager::new() {
+        Ok(manager) => manager,
+        Err(error) => {
+            return ProviderStatus::unavailable(format!(
+                "failed to initialize battery provider: {error}"
+            ));
+        }
+    };
+    let batteries = match manager.batteries() {
+        Ok(batteries) => batteries,
+        Err(error) => {
+            return ProviderStatus::unavailable(format!("failed to enumerate batteries: {error}"));
+        }
+    };
+
+    let mut first_error = None;
+    for result in batteries {
+        match result {
+            Ok(_) => return ProviderStatus::available(),
+            Err(error) => first_error = Some(error),
+        }
+    }
+
+    first_error.map_or_else(
+        || ProviderStatus::unavailable("no_battery_detected"),
+        |error| ProviderStatus::unavailable(format!("failed to read battery information: {error}")),
+    )
 }
 
 fn battery_info(index: usize, battery: &battery::Battery) -> BatteryInfo {
@@ -137,7 +175,7 @@ mod tests {
 
     #[test]
     fn snapshot_is_non_fatal_with_or_without_a_battery() {
-        let (batteries, warnings) = BatteryInfoSource::new().snapshot();
+        let (batteries, warnings) = BatteryInfoSource::probe().snapshot();
 
         assert!(batteries.iter().all(|battery| !battery.state.is_empty()));
         if batteries.is_empty() {

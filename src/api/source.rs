@@ -45,6 +45,7 @@ impl InfoSource for UnavailableInfoSource {
             sysinfo: ProviderStatus::unavailable("provider integration pending"),
             nvml: ProviderStatus::unavailable("provider integration pending"),
             cpu_power: ProviderStatus::unavailable("provider integration pending"),
+            battery: ProviderStatus::unavailable("provider integration pending"),
         }
     }
 
@@ -52,10 +53,10 @@ impl InfoSource for UnavailableInfoSource {
         let warnings = sections
             .iter()
             .map(|section| {
-                let provider = if matches!(section, InfoSection::Gpus) {
-                    "nvml"
-                } else {
-                    "sysinfo"
+                let provider = match section {
+                    InfoSection::Gpus => "nvml",
+                    InfoSection::Batteries => "battery",
+                    _ => "sysinfo",
                 };
                 InfoWarning {
                     code: "provider_unavailable".to_owned(),

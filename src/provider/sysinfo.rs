@@ -61,7 +61,7 @@ impl SysinfoInfoSource {
     fn unavailable_warnings(&self, sections: &[InfoSection], message: &str) -> Vec<InfoWarning> {
         sections
             .iter()
-            .filter(|section| **section != InfoSection::Gpus)
+            .filter(|section| !matches!(**section, InfoSection::Gpus | InfoSection::Batteries))
             .map(|section| InfoWarning {
                 code: "provider_unavailable".to_owned(),
                 message: message.to_owned(),
@@ -91,6 +91,7 @@ impl InfoSource for SysinfoInfoSource {
             sysinfo: self.status(),
             nvml: ProviderStatus::unavailable("NVML is provided separately"),
             cpu_power: ProviderStatus::unavailable("CPU power is provided separately"),
+            battery: ProviderStatus::unavailable("Battery is provided separately"),
         }
     }
 

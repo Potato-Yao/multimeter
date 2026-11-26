@@ -53,6 +53,7 @@ mod tests {
                 sysinfo: ProviderStatus::available(),
                 nvml: ProviderStatus::unavailable("not present"),
                 cpu_power: ProviderStatus::unavailable("not present"),
+                battery: ProviderStatus::unavailable("not present"),
             }
         }
 

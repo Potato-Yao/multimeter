@@ -121,6 +121,7 @@ pub struct ProviderCapabilities {
     pub sysinfo: ProviderStatus,
     pub nvml: ProviderStatus,
     pub cpu_power: ProviderStatus,
+    pub battery: ProviderStatus,
 }
 
 #[derive(Clone, Debug, Serialize)]

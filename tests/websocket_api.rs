@@ -4,8 +4,9 @@ use std::time::Duration;
 use futures_util::SinkExt;
 use futures_util::StreamExt;
 use multimeter::api::{
-    ApiBootstrap, ApiOptions, ApiServer, CpuInfo, GpuInfo, HardwareSnapshot, InfoSection,
-    InfoSource, MemoryInfo, ProcessInfo, ProviderCapabilities, ProviderError, ProviderStatus,
+    ApiBootstrap, ApiOptions, ApiServer, BatteryInfo, CpuInfo, GpuInfo, HardwareSnapshot,
+    InfoSection, InfoSource, MemoryInfo, ProcessInfo, ProviderCapabilities, ProviderError,
+    ProviderStatus,
 };
 use serde_json::Value;
 use serde_json::json;
@@ -25,6 +26,7 @@ impl InfoSource for FakeInfoSource {
             sysinfo: ProviderStatus::available(),
             nvml: ProviderStatus::available(),
             cpu_power: ProviderStatus::available(),
+            battery: ProviderStatus::available(),
         }
     }
 
@@ -62,6 +64,18 @@ impl InfoSource for FakeInfoSource {
                     ..GpuInfo::default()
                 }]
             }),
+            batteries: sections
+                .contains(&InfoSection::Batteries)
+                .then_some(vec![BatteryInfo {
+                    index: 0,
+                    vendor: Some("Example Vendor".to_owned()),
+                    model: Some("Example Battery".to_owned()),
+                    technology: "lithium-ion".to_owned(),
+                    state: "discharging".to_owned(),
+                    state_of_charge_percent: Some(73.4),
+                    time_to_empty_seconds: Some(11_640),
+                    ..BatteryInfo::default()
+                }]),
             ..HardwareSnapshot::default()
         })
     }
@@ -138,6 +152,7 @@ async fn supports_query_seeking_pause_and_shutdown() {
     assert_eq!(ready["data"]["providers"]["sysinfo"]["available"], true);
     assert_eq!(ready["data"]["providers"]["nvml"]["available"], true);
     assert_eq!(ready["data"]["providers"]["cpu_power"]["available"], true);
+    assert_eq!(ready["data"]["providers"]["battery"]["available"], true);
 
     send(
         &mut socket,
@@ -146,7 +161,7 @@ async fn supports_query_seeking_pause_and_shutdown() {
             "id": "query-1",
             "command": "info.query",
             "params": {
-                "sections": ["cpu", "self", "memory", "gpus"]
+                "sections": ["cpu", "self", "memory", "gpus", "batteries"]
             }
         }),
     )
@@ -174,6 +189,18 @@ async fn supports_query_seeking_pause_and_shutdown() {
     assert_eq!(
         query_response["result"]["snapshot"]["gpus"][0]["power_watts"],
         75.0
+    );
+    assert_eq!(
+        query_response["result"]["snapshot"]["batteries"][0]["state"],
+        "discharging"
+    );
+    assert!(
+        (query_response["result"]["snapshot"]["batteries"][0]["state_of_charge_percent"]
+            .as_f64()
+            .expect("charge should be numeric")
+            - 73.4)
+            .abs()
+            < 0.001
     );
 
     send(

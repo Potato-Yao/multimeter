@@ -28,7 +28,7 @@ impl MultimeterInfoSource {
             sysinfo: SysinfoInfoSource::probe(),
             cpu_power: CpuPowerSource::probe(),
             nvml: NvmlInfoSource::probe(),
-            battery: BatteryInfoSource::new(),
+            battery: BatteryInfoSource::probe(),
         }
     }
 
@@ -43,6 +43,7 @@ impl InfoSource for MultimeterInfoSource {
             sysinfo: self.sysinfo.status(),
             nvml: self.nvml.status(),
             cpu_power: self.cpu_power.status(),
+            battery: self.battery.status(),
         }
     }
 
