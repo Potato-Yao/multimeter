@@ -134,7 +134,7 @@ fn non_empty(value: Option<&str>) -> Option<String> {
 }
 
 fn percentage(value: f32) -> Option<f32> {
-    non_negative(value).map(|value| value.min(100.0))
+    finite(value).map(|value| value.clamp(0.0, 100.0))
 }
 
 fn duration_seconds(value: f32) -> Option<u64> {
@@ -142,7 +142,7 @@ fn duration_seconds(value: f32) -> Option<u64> {
 }
 
 fn non_negative(value: f32) -> Option<f32> {
-    finite(value).map(|value| value.max(0.0))
+    finite(value).filter(|value| *value >= 0.0)
 }
 
 fn finite(value: f32) -> Option<f32> {
@@ -160,7 +160,7 @@ fn warning(code: &str, message: impl Into<String>) -> InfoWarning {
 
 #[cfg(test)]
 mod tests {
-    use super::{BatteryInfoSource, duration_seconds, percentage};
+    use super::{BatteryInfoSource, duration_seconds, non_negative, percentage};
 
     #[test]
     fn normalizes_battery_measurements() {
@@ -169,8 +169,9 @@ mod tests {
         assert_eq!(percentage(120.0), Some(100.0));
         assert_eq!(percentage(f32::NAN), None);
         assert_eq!(duration_seconds(11_639.6), Some(11_640));
-        assert_eq!(duration_seconds(-1.0), Some(0));
+        assert_eq!(duration_seconds(-1.0), None);
         assert_eq!(duration_seconds(f32::INFINITY), None);
+        assert_eq!(non_negative(-1.0), None);
     }
 
     #[test]
