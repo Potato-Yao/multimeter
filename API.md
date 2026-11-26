@@ -158,6 +158,9 @@ session from starting.
 Each command must contain a non-empty request identifier. Responses repeat that
 identifier.
 
+Ready-to-paste interactive examples are available in
+[QUERY_EXAMPLES.md](QUERY_EXAMPLES.md).
+
 ```json
 {
   "type": "command",

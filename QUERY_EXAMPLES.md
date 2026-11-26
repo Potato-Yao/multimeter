@@ -1,0 +1,156 @@
+# Multimeter Interactive Query Examples
+
+These examples are ready to paste into the interactive session opened by
+`scripts/test-local.sh` or `scripts/test-local.ps1`. The launcher sends the
+authentication frame automatically, so the examples below contain only
+commands.
+
+Send one JSON message per line. Every command needs a non-empty `id`, which is
+repeated in the response so concurrent requests can be correlated. Request IDs
+do not need a special format, but should be unique within the session.
+
+## Snapshot queries
+
+Capture every available hardware and system section once:
+
+```json
+{"type":"command","id":"snapshot-all","command":"info.query","params":{}}
+```
+
+Capture CPU, memory, and swap together:
+
+```json
+{"type":"command","id":"snapshot-cpu-memory","command":"info.query","params":{"sections":["cpu","memory","swap"]}}
+```
+
+Check NVIDIA GPU telemetry and component temperatures and thresholds:
+
+```json
+{"type":"command","id":"snapshot-gpu-components","command":"info.query","params":{"sections":["gpus","components"]}}
+```
+
+Inspect the operating system, mounted disks, and network interfaces:
+
+```json
+{"type":"command","id":"snapshot-system-io","command":"info.query","params":{"sections":["platform","disks","networks"]}}
+```
+
+The snapshot is returned under `result.snapshot`. Available section names are
+`platform`, `cpu`, `memory`, `swap`, `disks`, `networks`, `gpus`, and
+`components`. Omitting `sections`, or using an empty `params` object, requests
+all of them.
+
+## Periodic collection
+
+Start periodic collection once per second:
+
+```json
+{"type":"command","id":"seek-start","command":"seeking.start","params":{"interval_ms":1000,"sections":["cpu","memory","gpus","components"]}}
+```
+
+Each snapshot is sent as an unsolicited `info.snapshot` event, rather than as a
+response with `id`. Intervals must be between `250` and `60000` milliseconds.
+
+Change the interval and section selection without reconnecting:
+
+```json
+{"type":"command","id":"seek-retarget","command":"seeking.start","params":{"interval_ms":500,"sections":["cpu","memory"]}}
+```
+
+Pause periodic collection while keeping the WebSocket session open:
+
+```json
+{"type":"command","id":"seek-pause","command":"seeking.pause","params":{}}
+```
+
+Resume with the current selection. Omitting `sections` preserves the sections
+chosen by the previous `seeking.start` command:
+
+```json
+{"type":"command","id":"seek-resume","command":"seeking.start","params":{"interval_ms":1000}}
+```
+
+`info.query` remains available while periodic collection is paused.
+
+## CPU stress test
+
+`cpu_test.start` runs an infinite CPU burn using one worker per logical CPU. It
+is intentionally load-generating; stop it explicitly when the test is finished:
+
+```json
+{"type":"command","id":"cpu-start","command":"cpu_test.start","params":{}}
+```
+
+After a few seconds, stop it and receive aggregate worker and throughput
+metrics:
+
+```json
+{"type":"command","id":"cpu-stop","command":"cpu_test.stop","params":{}}
+```
+
+Starting an already-running test is an idempotent success. Stopping an idle test
+is also successful and omits the metrics result. Disconnecting the WebSocket
+also cancels an active CPU test.
+
+## GPU stress test
+
+`gpu_test.start` starts an infinite compute workload on the selected wgpu
+adapter. It is intentionally load-generating; do not leave it running
+unattended:
+
+```json
+{"type":"command","id":"gpu-start","command":"gpu_test.start","params":{}}
+```
+
+Stop the workload and receive adapter, elapsed-time, dispatch-count, and
+element-round metrics:
+
+```json
+{"type":"command","id":"gpu-stop","command":"gpu_test.stop","params":{}}
+```
+
+If no compatible GPU adapter is available, the start command returns
+`ok: false` with error code `gpu_test_unavailable`. A running test can also
+produce a `gpu_test.failed` event before returning to the `idle` state.
+
+## Error and shutdown examples
+
+Verify interval validation with an intentionally invalid value:
+
+```json
+{"type":"command","id":"seek-invalid","command":"seeking.start","params":{"interval_ms":100}}
+```
+
+This returns `ok: false` with error code `invalid_request`.
+
+Check unknown-command handling:
+
+```json
+{"type":"command","id":"unknown-command","command":"example.does_not_exist","params":{}}
+```
+
+This returns `ok: false` with error code `unknown_command` and does not close
+the session.
+
+Finally, stop all active tests and terminate multimeter:
+
+```json
+{"type":"command","id":"shutdown","command":"app.shutdown","params":{}}
+```
+
+The server responds with `state: closing`, emits `seeking.state` and
+`session.closed` events, closes the WebSocket, and exits.
+
+## Reading results
+
+- `session.ready` reports initial seeking/test state and which `sysinfo`, NVML,
+  and CPU-power providers are available.
+- `response` messages repeat the command `id` and contain either `result` or
+  `error`.
+- `info.snapshot` events are generated by `seeking.start`.
+- `seeking.state`, `cpu_test.state`, and `gpu_test.state` report control-state
+  transitions.
+- Missing optional measurements may produce `warnings` without failing the
+  entire snapshot.
+
+See [API.md](API.md) for complete payload schemas and behavior.
