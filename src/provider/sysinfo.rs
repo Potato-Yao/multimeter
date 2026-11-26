@@ -2,12 +2,13 @@ use std::sync::Mutex;
 
 use crate::api::{
     ComponentInfo, CpuInfo, DiskInfo, HardwareSnapshot, InfoSection, InfoSource, InfoWarning,
-    LoadAverage, MemoryInfo, NetworkInfo, ProviderCapabilities, ProviderError, ProviderStatus,
-    SwapInfo, SystemInfo,
+    LoadAverage, MemoryInfo, NetworkInfo, ProcessInfo, ProviderCapabilities, ProviderError,
+    ProviderStatus, SwapInfo, SystemInfo,
 };
 
 use ::sysinfo::{
-    Components, CpuRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind, System,
+    Components, CpuRefreshKind, Disks, MemoryRefreshKind, Networks, Pid, ProcessRefreshKind,
+    ProcessesToUpdate, RefreshKind, System,
 };
 
 pub struct SysinfoInfoSource {
@@ -24,6 +25,8 @@ enum CollectorState {
 struct Collectors {
     system: System,
     physical_cores: Option<u32>,
+    logical_cores: u32,
+    process_id: Option<Pid>,
     disks: Option<Disks>,
     networks: Option<Networks>,
     components: Option<Components>,
@@ -116,6 +119,9 @@ impl InfoSource for SysinfoInfoSource {
         if sections.contains(&InfoSection::Cpu) {
             snapshot.cpu = Some(collectors.cpu());
         }
+        if sections.contains(&InfoSection::Process) {
+            snapshot.process = collectors.process();
+        }
         if sections.contains(&InfoSection::Memory) || sections.contains(&InfoSection::Swap) {
             let mut kinds = MemoryRefreshKind::nothing();
             if sections.contains(&InfoSection::Memory) {
@@ -166,6 +172,8 @@ impl Collectors {
         let physical_cores = System::physical_core_count()
             .ok()
             .and_then(|count| u32::try_from(count).ok());
+        let logical_cores = u32::try_from(system.cpus().len()).unwrap_or(u32::MAX);
+        let process_id = ::sysinfo::get_current_pid().ok();
         let mut section_failures = Vec::new();
 
         let disks = match Disks::new_with_refreshed_list() {
@@ -203,6 +211,8 @@ impl Collectors {
             Self {
                 system,
                 physical_cores,
+                logical_cores,
+                process_id,
                 disks,
                 networks,
                 components,
@@ -246,6 +256,33 @@ impl Collectors {
             power_watts: None,
             per_core_usage_percent: cpus.iter().map(::sysinfo::Cpu::usage).collect(),
         }
+    }
+
+    fn process(&mut self) -> Option<ProcessInfo> {
+        let pid = self.process_id?;
+        let updated = self.system.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[pid]),
+            false,
+            ProcessRefreshKind::nothing().with_cpu().with_memory(),
+        );
+        if updated == 0 {
+            return None;
+        }
+
+        let process = self.system.process(pid)?;
+        let logical_cores = self.logical_cores.max(1) as f32;
+        let cpu_usage_percent = process.cpu_usage() / logical_cores;
+        let cpu_usage_percent = if cpu_usage_percent.is_finite() {
+            cpu_usage_percent.clamp(0.0, 100.0)
+        } else {
+            0.0
+        };
+
+        Some(ProcessInfo {
+            pid: pid.as_u32(),
+            cpu_usage_percent,
+            memory_bytes: process.memory(),
+        })
     }
 
     fn disks(&mut self) -> Vec<DiskInfo> {

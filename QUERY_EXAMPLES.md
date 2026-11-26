@@ -23,6 +23,12 @@ Capture CPU, memory, and swap together:
 {"type":"command","id":"snapshot-cpu-memory","command":"info.query","params":{"sections":["cpu","memory","swap"]}}
 ```
 
+Inspect Multimeter's own process CPU and resident RAM usage:
+
+```json
+{"type":"command","id":"snapshot-self","command":"info.query","params":{"sections":["self"]}}
+```
+
 Check NVIDIA GPU telemetry and component temperatures and thresholds:
 
 ```json
@@ -36,16 +42,17 @@ Inspect the operating system, mounted disks, and network interfaces:
 ```
 
 The snapshot is returned under `result.snapshot`. Available section names are
-`platform`, `cpu`, `memory`, `swap`, `disks`, `networks`, `gpus`, and
+`platform`, `cpu`, `self`, `memory`, `swap`, `disks`, `networks`, `gpus`, and
 `components`. Omitting `sections`, or using an empty `params` object, requests
-all of them.
+all of them. The `self` section reports the Multimeter process's PID,
+machine-normalized CPU percentage, and resident memory bytes.
 
 ## Periodic collection
 
 Start periodic collection once per second:
 
 ```json
-{"type":"command","id":"seek-start","command":"seeking.start","params":{"interval_ms":1000,"sections":["cpu","memory","gpus","components"]}}
+{"type":"command","id":"seek-start","command":"seeking.start","params":{"interval_ms":1000,"sections":["cpu","self","memory","gpus","components"]}}
 ```
 
 Each snapshot is sent as an unsolicited `info.snapshot` event, rather than as a

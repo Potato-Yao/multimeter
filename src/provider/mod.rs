@@ -92,11 +92,23 @@ mod tests {
         let query_service = crate::api::QueryService::new(source);
 
         let snapshot = query_service
-            .snapshot(&[InfoSection::Platform, InfoSection::Cpu, InfoSection::Memory])
+            .snapshot(&[
+                InfoSection::Platform,
+                InfoSection::Cpu,
+                InfoSection::Process,
+                InfoSection::Memory,
+            ])
             .expect("system snapshot should succeed");
 
         assert!(snapshot.platform.is_some());
         assert!(snapshot.cpu.is_some());
+        assert_eq!(
+            snapshot
+                .process
+                .expect("process info should be available")
+                .pid,
+            std::process::id()
+        );
         assert!(snapshot.memory.is_some());
         assert!(snapshot.disks.is_none());
     }

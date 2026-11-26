@@ -5,7 +5,7 @@ use futures_util::SinkExt;
 use futures_util::StreamExt;
 use multimeter::api::{
     ApiBootstrap, ApiOptions, ApiServer, CpuInfo, GpuInfo, HardwareSnapshot, InfoSection,
-    InfoSource, MemoryInfo, ProviderCapabilities, ProviderError, ProviderStatus,
+    InfoSource, MemoryInfo, ProcessInfo, ProviderCapabilities, ProviderError, ProviderStatus,
 };
 use serde_json::Value;
 use serde_json::json;
@@ -46,6 +46,13 @@ impl InfoSource for FakeInfoSource {
                     used_bytes: 4 * 1024 * 1024 * 1024,
                     available_bytes: 12 * 1024 * 1024 * 1024,
                     ..MemoryInfo::default()
+                }),
+            process: sections
+                .contains(&InfoSection::Process)
+                .then_some(ProcessInfo {
+                    pid: 1_234,
+                    cpu_usage_percent: 12.5,
+                    memory_bytes: 64 * 1024 * 1024,
                 }),
             gpus: sections.contains(&InfoSection::Gpus).then(|| {
                 vec![GpuInfo {
@@ -139,7 +146,7 @@ async fn supports_query_seeking_pause_and_shutdown() {
             "id": "query-1",
             "command": "info.query",
             "params": {
-                "sections": ["cpu", "memory", "gpus"]
+                "sections": ["cpu", "self", "memory", "gpus"]
             }
         }),
     )
@@ -154,6 +161,15 @@ async fn supports_query_seeking_pause_and_shutdown() {
     assert_eq!(
         query_response["result"]["snapshot"]["cpu"]["power_watts"],
         40.0
+    );
+    assert_eq!(query_response["result"]["snapshot"]["self"]["pid"], 1_234);
+    assert_eq!(
+        query_response["result"]["snapshot"]["self"]["cpu_usage_percent"],
+        12.5
+    );
+    assert_eq!(
+        query_response["result"]["snapshot"]["self"]["memory_bytes"],
+        67_108_864
     );
     assert_eq!(
         query_response["result"]["snapshot"]["gpus"][0]["power_watts"],

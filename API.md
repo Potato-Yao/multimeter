@@ -198,8 +198,8 @@ Failed response:
 ### `info.query`
 
 Collects one fresh snapshot. Omitting `sections` requests every available
-section. Available sections are `platform`, `cpu`, `memory`, `swap`, `disks`,
-`networks`, `gpus`, and `components`.
+section. Available sections are `platform`, `cpu`, `self`, `memory`, `swap`,
+`disks`, `networks`, `gpus`, and `components`.
 
 ```json
 {
@@ -207,7 +207,7 @@ section. Available sections are `platform`, `cpu`, `memory`, `swap`, `disks`,
   "id": "query-1",
   "command": "info.query",
   "params": {
-    "sections": ["cpu", "memory", "gpus"]
+    "sections": ["cpu", "self", "memory", "gpus"]
   }
 }
 ```
@@ -231,6 +231,11 @@ The result has the form:
         "frequency_mhz": 3600,
         "power_watts": 38.4
       },
+      "self": {
+        "pid": 12345,
+        "cpu_usage_percent": 12.5,
+        "memory_bytes": 67108864
+      },
       "memory": {
         "total_bytes": 34359738368,
         "used_bytes": 12884901888,
@@ -245,6 +250,47 @@ The result has the form:
 Values with explicit unit suffixes are stable API fields. Missing optional
 values are omitted. A successful query may include warnings when an optional
 provider or section is unavailable.
+
+### Multimeter process usage
+
+The `self` section reports resource usage for the running Multimeter process,
+not the machine-wide totals.
+
+```json
+{
+  "type": "command",
+  "id": "query-self",
+  "command": "info.query",
+  "params": {
+    "sections": ["self"]
+  }
+}
+```
+
+```json
+{
+  "type": "response",
+  "id": "query-self",
+  "ok": true,
+  "result": {
+    "snapshot": {
+      "sequence": 3,
+      "captured_at": "2026-11-23T12:34:58.789Z",
+      "self": {
+        "pid": 12345,
+        "cpu_usage_percent": 12.5,
+        "memory_bytes": 67108864
+      },
+      "warnings": []
+    }
+  }
+}
+```
+
+`cpu_usage_percent` is normalized across all logical CPUs, so `100` means the
+whole machine is saturated by Multimeter. `memory_bytes` is the process's
+resident physical RAM. CPU usage needs two samples, so the first reading after
+Multimeter starts may be `0.0`; periodic `seeking.start` snapshots update it.
 
 ### Power telemetry
 
@@ -276,7 +322,7 @@ the session.
   "command": "seeking.start",
   "params": {
     "interval_ms": 1000,
-    "sections": ["cpu", "memory", "gpus", "components"]
+    "sections": ["cpu", "self", "memory", "gpus", "components"]
   }
 }
 ```

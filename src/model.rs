@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub enum InfoSection {
     Platform,
     Cpu,
+    #[serde(rename = "self")]
+    Process,
     Memory,
     Swap,
     Disks,
@@ -14,9 +16,10 @@ pub enum InfoSection {
 }
 
 impl InfoSection {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Platform,
         Self::Cpu,
+        Self::Process,
         Self::Memory,
         Self::Swap,
         Self::Disks,
@@ -90,6 +93,13 @@ pub struct CpuInfo {
     pub power_watts: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub per_core_usage_percent: Vec<f32>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub cpu_usage_percent: f32,
+    pub memory_bytes: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -214,6 +224,8 @@ pub struct HardwareSnapshot {
     pub platform: Option<SystemInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cpu: Option<CpuInfo>,
+    #[serde(rename = "self", skip_serializing_if = "Option::is_none")]
+    pub process: Option<ProcessInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory: Option<MemoryInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -242,7 +254,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        CpuInfo, DiskInfo, HardwareSnapshot, InfoSection, InfoWarning, SystemInfo,
+        CpuInfo, DiskInfo, HardwareSnapshot, InfoSection, InfoWarning, ProcessInfo, SystemInfo,
         normalize_sections,
     };
 
@@ -251,10 +263,12 @@ mod tests {
         assert_eq!(
             normalize_sections(vec![
                 InfoSection::Cpu,
+                InfoSection::Process,
                 InfoSection::Memory,
+                InfoSection::Process,
                 InfoSection::Cpu,
             ]),
-            vec![InfoSection::Cpu, InfoSection::Memory]
+            vec![InfoSection::Cpu, InfoSection::Process, InfoSection::Memory]
         );
     }
 
@@ -275,6 +289,11 @@ mod tests {
                 power_watts: Some(40.0),
                 per_core_usage_percent: vec![20.0, 30.0],
                 ..CpuInfo::default()
+            }),
+            process: Some(ProcessInfo {
+                pid: 1_234,
+                cpu_usage_percent: 12.5,
+                memory_bytes: 64 * 1024 * 1024,
             }),
             disks: Some(vec![DiskInfo {
                 name: "disk0".to_owned(),
@@ -297,6 +316,9 @@ mod tests {
         assert_eq!(value["cpu"]["frequency_mhz"], 3_200);
         assert_eq!(value["cpu"]["power_watts"], 40.0);
         assert_eq!(value["cpu"]["per_core_usage_percent"], json!([20.0, 30.0]));
+        assert_eq!(value["self"]["pid"], 1_234);
+        assert_eq!(value["self"]["cpu_usage_percent"], 12.5);
+        assert_eq!(value["self"]["memory_bytes"], 67_108_864);
         assert_eq!(value["disks"][0]["available_bytes"], 250);
         assert_eq!(value["warnings"][0]["section"], "components");
     }
