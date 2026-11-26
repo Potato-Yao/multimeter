@@ -1,3 +1,4 @@
+mod battery;
 mod cpu_power;
 mod nvml;
 mod sysinfo;
@@ -7,6 +8,7 @@ use std::sync::Arc;
 use crate::api::{HardwareSnapshot, InfoSection, InfoSource, ProviderCapabilities, ProviderError};
 use crate::model::{GpuInfo, InfoWarning};
 
+use battery::BatteryInfoSource;
 use cpu_power::CpuPowerSource;
 pub use sysinfo::SysinfoInfoSource;
 
@@ -17,6 +19,7 @@ pub struct MultimeterInfoSource {
     sysinfo: SysinfoInfoSource,
     cpu_power: CpuPowerSource,
     nvml: NvmlInfoSource,
+    battery: BatteryInfoSource,
 }
 
 impl MultimeterInfoSource {
@@ -25,6 +28,7 @@ impl MultimeterInfoSource {
             sysinfo: SysinfoInfoSource::probe(),
             cpu_power: CpuPowerSource::probe(),
             nvml: NvmlInfoSource::probe(),
+            battery: BatteryInfoSource::new(),
         }
     }
 
@@ -55,6 +59,11 @@ impl InfoSource for MultimeterInfoSource {
         if sections.contains(&InfoSection::Gpus) {
             let (gpus, warnings) = self.nvml.gpus();
             snapshot.gpus = gpus;
+            snapshot.warnings.extend(warnings);
+        }
+        if sections.contains(&InfoSection::Batteries) {
+            let (batteries, warnings) = self.battery.snapshot();
+            snapshot.batteries = Some(batteries);
             snapshot.warnings.extend(warnings);
         }
         Ok(snapshot)

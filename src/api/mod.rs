@@ -4,9 +4,9 @@ mod server;
 mod source;
 
 pub use crate::model::{
-    ComponentInfo, CpuInfo, DiskInfo, GpuInfo, HardwareSnapshot, InfoSection, InfoWarning,
-    LoadAverage, MemoryInfo, NetworkInfo, PlatformInfo, ProcessInfo, SwapInfo, SystemInfo,
-    normalize_sections,
+    BatteryInfo, ComponentInfo, CpuInfo, DiskInfo, GpuInfo, HardwareSnapshot, InfoSection,
+    InfoWarning, LoadAverage, MemoryInfo, NetworkInfo, PlatformInfo, ProcessInfo, SwapInfo,
+    SystemInfo, normalize_sections,
 };
 pub use protocol::{
     ApiErrorPayload, ClientMessage, CpuTestMetrics, CpuTestStartResult, CpuTestState,

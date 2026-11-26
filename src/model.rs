@@ -13,10 +13,11 @@ pub enum InfoSection {
     Networks,
     Gpus,
     Components,
+    Batteries,
 }
 
 impl InfoSection {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Platform,
         Self::Cpu,
         Self::Process,
@@ -26,6 +27,7 @@ impl InfoSection {
         Self::Networks,
         Self::Gpus,
         Self::Components,
+        Self::Batteries,
     ];
 }
 
@@ -208,6 +210,39 @@ pub struct ComponentInfo {
     pub critical_celsius: Option<f32>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct BatteryInfo {
+    pub index: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    pub technology: String,
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_of_charge_percent: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_of_health_percent: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub energy_wh: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub energy_full_wh: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub energy_full_design_wh: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub energy_rate_watts: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voltage_volts: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature_celsius: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cycle_count: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_full_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_empty_seconds: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct InfoWarning {
     pub code: String,
@@ -238,6 +273,8 @@ pub struct HardwareSnapshot {
     pub gpus: Option<Vec<GpuInfo>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub components: Option<Vec<ComponentInfo>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub batteries: Option<Vec<BatteryInfo>>,
     pub warnings: Vec<InfoWarning>,
 }
 
@@ -254,8 +291,8 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        CpuInfo, DiskInfo, HardwareSnapshot, InfoSection, InfoWarning, ProcessInfo, SystemInfo,
-        normalize_sections,
+        BatteryInfo, CpuInfo, DiskInfo, HardwareSnapshot, InfoSection, InfoWarning, ProcessInfo,
+        SystemInfo, normalize_sections,
     };
 
     #[test]
@@ -302,6 +339,24 @@ mod tests {
                 available_bytes: 250,
                 ..DiskInfo::default()
             }]),
+            batteries: Some(vec![BatteryInfo {
+                index: 0,
+                vendor: Some("Example Vendor".to_owned()),
+                model: Some("Example Battery".to_owned()),
+                technology: "lithium-ion".to_owned(),
+                state: "discharging".to_owned(),
+                state_of_charge_percent: Some(73.4),
+                state_of_health_percent: Some(91.2),
+                energy_wh: Some(41.2),
+                energy_full_wh: Some(56.3),
+                energy_full_design_wh: Some(61.8),
+                energy_rate_watts: Some(12.7),
+                voltage_volts: Some(12.1),
+                temperature_celsius: Some(31.4),
+                cycle_count: Some(142),
+                time_to_full_seconds: None,
+                time_to_empty_seconds: Some(11_640),
+            }]),
             warnings: vec![InfoWarning {
                 code: "partial_data".to_owned(),
                 message: "temperature unavailable".to_owned(),
@@ -320,6 +375,17 @@ mod tests {
         assert_eq!(value["self"]["cpu_usage_percent"], 12.5);
         assert_eq!(value["self"]["memory_bytes"], 67_108_864);
         assert_eq!(value["disks"][0]["available_bytes"], 250);
+        assert_eq!(value["batteries"][0]["state"], "discharging");
+        assert!(
+            (value["batteries"][0]["state_of_charge_percent"]
+                .as_f64()
+                .expect("charge should be numeric")
+                - 73.4)
+                .abs()
+                < 0.001
+        );
+        assert_eq!(value["batteries"][0]["time_to_empty_seconds"], 11_640);
+        assert!(value["batteries"][0].get("time_to_full_seconds").is_none());
         assert_eq!(value["warnings"][0]["section"], "components");
     }
 }
