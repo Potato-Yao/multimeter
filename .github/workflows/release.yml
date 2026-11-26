@@ -21,15 +21,33 @@ jobs:
           - name: Linux x86_64 GNU
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            cargo_args: --no-default-features
+            asset_suffix: ""
+            artifact_name: multimeter-x86_64-unknown-linux-gnu
           - name: Linux x86_64 musl
             os: ubuntu-22.04
             target: x86_64-unknown-linux-musl
-          - name: Windows x86_64
+            cargo_args: --no-default-features
+            asset_suffix: ""
+            artifact_name: multimeter-x86_64-unknown-linux-musl
+          - name: Windows x86_64 self-contained
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            cargo_args: --features static-dxc
+            asset_suffix: ""
+            artifact_name: multimeter-x86_64-pc-windows-msvc
+          - name: Windows x86_64 no static DXC
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            cargo_args: --no-default-features
+            asset_suffix: -no-static-dxc
+            artifact_name: multimeter-x86_64-pc-windows-msvc-no-static-dxc
           - name: Windows ARM64
             os: windows-11-arm
             target: aarch64-pc-windows-msvc
+            cargo_args: --no-default-features
+            asset_suffix: ""
+            artifact_name: multimeter-aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -51,36 +69,51 @@ jobs:
         run: rustup target add "${{ matrix.target }}"
 
       - name: Run tests
-        run: cargo test --locked --all-targets --target "${{ matrix.target }}"
+        run: cargo test --locked --all-targets --target "${{ matrix.target }}" ${{ matrix.cargo_args }}
 
       - name: Build release executable
-        run: cargo build --locked --release --target "${{ matrix.target }}"
+        run: cargo build --locked --release --target "${{ matrix.target }}" ${{ matrix.cargo_args }}
+
+      - name: Smoke-test Linux executable
+        if: runner.os == 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: ./target/"${TARGET}"/release/multimeter --help
+
+      - name: Smoke-test Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: '& "target/$env:TARGET/release/multimeter.exe" --help'
 
       - name: Copy Linux executable
         if: runner.os == 'Linux'
         env:
           TARGET: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
         run: |
           mkdir -p dist
           install -m 755 \
             "target/${TARGET}/release/multimeter" \
-            "dist/multimeter-${GITHUB_REF_NAME}-${TARGET}"
+            "dist/multimeter-${GITHUB_REF_NAME}-${TARGET}${ASSET_SUFFIX}"
 
       - name: Copy Windows executable
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           TARGET: ${{ matrix.target }}
+          ASSET_SUFFIX: ${{ matrix.asset_suffix }}
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item `
             -Path "target/$env:TARGET/release/multimeter.exe" `
-            -Destination "dist/multimeter-$env:GITHUB_REF_NAME-$env:TARGET.exe"
+            -Destination "dist/multimeter-$env:GITHUB_REF_NAME-$env:TARGET$env:ASSET_SUFFIX.exe"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: multimeter-${{ matrix.target }}
+          name: ${{ matrix.artifact_name }}
           path: dist/*
           if-no-files-found: error
 

@@ -3,6 +3,10 @@ name = "multimeter"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["static-dxc"]
+static-dxc = ["wgpu/static-dxc"]
+
 [dependencies]
 base64 = "0.23"
 battery = { package = "starship-battery", version = "0.12" }
@@ -37,7 +41,6 @@ libc = "0.2"
 wgpu = { version = "30", default-features = false, features = [
     "dx12",
     "parking_lot",
-    "static-dxc",
     "std",
     "wgsl",
 ] }
